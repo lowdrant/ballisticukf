@@ -19,7 +19,6 @@ dt = 0.01
 t1 = 1
 npts = 4
 
-g = 1
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 2)  # xdot,ydot,thetadot
 
@@ -42,7 +41,7 @@ def ode(x, t):
     xdot = zeros_like(x)
     N = len(x)
     xdot[:N // 2] = x[N // 2:]
-    xdot[N // 2:] = [0, -g, 0]
+    xdot[N // 2:] = [0, -1, 0]
     return xdot
 
 
