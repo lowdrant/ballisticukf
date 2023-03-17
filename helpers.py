@@ -95,3 +95,15 @@ def sim(x0, t, return_state=0):
     if return_state:
         return gcom, out
     return gcom
+
+
+def rms(x, axis=None):
+    """Compute RMS of x
+    INPUTS:
+        x -- Nx... array of data
+        axis -- (optional) axis along which to compute mean 
+    OUTPUTS:
+        rms -- sqrt(x.mean(axis))
+    """
+    x = asarray(x)
+    return sqrt(x.mean(axis=axis))
