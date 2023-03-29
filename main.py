@@ -46,7 +46,6 @@ for i in range(npts):
 
 # ===================================================================
 # Estimation
-# TODO: come up with probability/pentalty func for observations
 
 obs = einsum('ij...,j->i...', gp, [0, 0, 1])
 ctrd = obs[:-1].mean(1)  # maybe centroid will be easier to work with?
@@ -57,11 +56,29 @@ def pxt(xtm1):
 
 
 def pzt(zt, xt):
-    return 1
+    """"Probability" that observations zt came from state xt. Implemented as a
+    cost function of RBT prediction error of zt.
+
+    NOTES:
+        Since zt is a rigid point on body xt, augment xt with RBT to zt.
+        The particle filter renormalizes the probability of the particles,
+        so the output of this function doesn't need to cleanly integrate to 1.        
+        This lets us return 1/(1+err), where `err` is the Euclidean distance
+        between the observed marker and its predicted location by the RBTs.
+        The form of the function makes low errors preferred while avoiding
+        division by 0/numeric instability.
+    """
+    xt = asarray(xt)
+    zt = asarray(zt)
+    dx, dy, phi = xt[-3:]  # marker in body frame
+    x, y, th = xt[:3]  # body in world frame
+    zt_hat = SE2(x, y, th) @ SE2(dx, dy, phi) @ [0, 0, 1]
+    err = rms(zt - zt_hat)
+    return 1 / (1 + err)
 
 
 pf = ParticleFilter(pxt, pzt, dbg=1)
-Xt = zeros((len(t), 1000, 6))
+Xt = zeros((len(t), 1000, 9))
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], ctrd[..., i])
 
