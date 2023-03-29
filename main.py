@@ -18,6 +18,7 @@ t1 = 1
 npts = 4
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 2)  # xdot,ydot,thetadot
+M = 100
 
 # ===================================================================
 # Simulate Point Motion
@@ -52,7 +53,14 @@ ctrd = obs[:-1].mean(1)  # maybe centroid will be easier to work with?
 
 
 def pxt(xtm1):
-    return normal(asarray(xtm1), [5] * len(xtm1))
+    sigma = 0.01
+    xtm1 = asarray(xtm1)
+    loc = xtm1.copy()
+    # state positons move forward by velocity
+    for i in range(3):
+        loc[i] += dt * loc[3 + i]
+    loc[4] -= dt
+    return normal(loc, [sigma] * len(loc))
 
 
 def pzt(zt, xt):
@@ -74,15 +82,17 @@ def pzt(zt, xt):
     x, y, th = xt[:3]  # body in world frame
     zt_hat = SE2(x, y, th) @ SE2(dx, dy, phi) @ [0, 0, 1]
     err = sqrt(sum((zt - zt_hat[:-1])**2))
-    return 1 / (1 + err)
+    return 1 / (0.1 + err)
 
 
 pf = ParticleFilter(pxt, pzt, dbg=1)
-Xt = zeros((len(t), 1000, 9))
+x0 = [*ctrd[..., 0], 0, 0, 0, 0, 0, 0, 0]
+Xt = zeros((len(t), M, 9))
+Xt[-1] = x0
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], ctrd[..., i])
 
-est = Xt.mean(1)
+est = mean(Xt, 1)
 
 # ===================================================================
 # Plot
@@ -92,6 +102,7 @@ axp.plot(gcom[0, -1], gcom[1, -1], label='CoM', lw=3)
 for i in range(npts):
     axp.plot(gp[0, -1, i], gp[1, -1, i], label=f'M{i+1}')
 axp.plot(*ctrd, label='marker centroid', lw=3)
+axp.plot(*est.T[:2], '.-', label='estimated CoM')
 axp.legend(loc='lower left')
 axp.set_xlabel('$x$')
 axp.set_ylabel('$y$')
