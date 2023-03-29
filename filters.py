@@ -25,13 +25,18 @@ class ParticleFilter():
     >>>     Xt[i] = pf(Xtm1, zt)
     """
 
-    def __init__(self, pxt, pzt):
+    def __init__(self, pxt, pzt, dbg=False):
         # sanitize
         assert callable(pxt), f'pxt must be callable, not {type(pxt)}'
         assert callable(pzt), f'pzt must be callable, not {type(pzt)}'
         # setup
         self.pxt = pxt
         self.pzt = pzt
+
+        self.dbg = dbg
+        self.Xbart_dbg = []
+        self.Xt_dbg = []
+        self.ii_dbg = []
 
     def __call__(self, Xtm1, zt, out=None):
         """run particle filter
@@ -44,6 +49,9 @@ class ParticleFilter():
         Xtm1 = asarray(Xtm1)
         Xbart = self._flow_particles(Xtm1, zt)
         Xt = self._resample(Xbart)
+        if self.dbg:
+            self.Xbart_dbg.append(Xbart)
+            self.Xt_dbg.append(Xt)
         return out
 
     def _flow_particles(self, Xtm1, zt):
@@ -60,4 +68,7 @@ class ParticleFilter():
         M = len(Xbart)
         wt = Xbart[:, -1]
         ii = choice(range(M), size=M, p=wt / wt.sum())
+        if self.dbg:
+            self.ii_dbg.append(ii)
         return Xbart[ii, :-1]
+
