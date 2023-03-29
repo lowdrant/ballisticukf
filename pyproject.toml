@@ -3,7 +3,7 @@ line_length = 80
 
 [tool.autopep8]
 max_line_length = 80
-ignore = E731
+ignore = E731, W391
 
 [tool.pylint]
 disable = [comprehension-escape, redefined-outer-name, invalid-name,

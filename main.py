@@ -7,8 +7,9 @@ Choose units (mass, length, time) s.t. m = r = g = I = 1
 """
 import matplotlib.pyplot as plt
 from numpy import *
-from numpy.random import rand, seed, choice
+from numpy.random import normal, rand, seed
 
+from filters import *
 from helpers import *
 
 # Constants
@@ -45,31 +46,25 @@ for i in range(npts):
 
 # ===================================================================
 # Estimation
-# TODO: determine measurement priors and belief functions
 
 obs = einsum('ij...,j->i...', gp, [0, 0, 1])
 ctrd = obs[:-1].mean(1)  # maybe centroid will be easier to work with?
 
 
-def pf(Xtm1, zt, M=1000):
-    """particle filter, Thrun Chp4 p98"""
-    raise NotImplementedError
-    xt, wt, Xt = zeros((3, M))
-    Xbart = 0
-    # probability calcs
-    for m in range(M):
-        # xt[m] = # p(xt|ut,Xtm1[m])
-        # wt[n] = # p(zt|xt[m])
-        Xbart += dot(xt[m], wt[m])
-    # populate Xt
-    ii = choice(range(M), size=M, p=wt / wt.sum())
-    Xt[...] = xt[ii]
-    return Xt
+def pxt(xtm1):
+    xtm1 = asarray(xtm1)
+    return normal(xtm1, [5] * len(xtm1))
 
 
-Xt = zeros((len(t), 2))
-# for i, _ in enumerate(t):
-#    Xt[i] = pf(Xt[i - 1], obs[..., i])
+def pzt(zt, xt):
+    # TODO: come up with probability/pentalty func for observations
+    return 0.5
+
+
+pf = ParticleFilter(pxt, pzt)
+Xt = zeros((len(t), 1000, 6))
+for i, _ in enumerate(t):
+    Xt[i] = pf(Xt[i - 1], ctrd[..., i])
 
 # ===================================================================
 # Plot
