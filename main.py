@@ -65,6 +65,8 @@ Xt = zeros((len(t), 1000, 6))
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], ctrd[..., i])
 
+est = Xt.mean(1)
+
 # ===================================================================
 # Plot
 
@@ -85,7 +87,7 @@ c = ['tab:' + v for v in ('blue', 'orange')]
 lbl = ['true ' + v for v in ('xc', 'yc')]
 ylbl = [f'${v}$' for v in ('x', 'y')]
 for i in range(2):
-    axf[i].plot(t, Xt[:, i], '.-', label=f'Xt[{i}]')
+    axf[i].plot(t, est[:, i], '.-', label=f'Xt[{i}]')
     axf[i].plot(t, gcom[i, -1], '.-', c=c[i], label=lbl[i])
     axf[i].set_ylabel(ylbl[i])
 for a in axf:
