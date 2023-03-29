@@ -1,4 +1,4 @@
-__all__ = ['r2d', 'newplot', 'ipychk', 'gen_transform', 'sim']
+__all__ = ['r2d', 'newplot', 'ipychk', 'gen_transform', 'sim', 'SE2', 'rms']
 """
 Helper functions to keep main.py clean and readable
 """
@@ -120,7 +120,7 @@ def rms(x, axis=None):
         x -- Nx... array of data
         axis -- (optional) axis along which to compute mean 
     OUTPUTS:
-        rms -- sqrt(x.mean(axis))
+        rms -- sqrt((x**2).mean(axis))
     """
     x = asarray(x)
-    return sqrt(x.mean(axis=axis))
+    return sqrt((x**2).mean(axis=axis))

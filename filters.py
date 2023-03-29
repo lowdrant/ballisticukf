@@ -48,10 +48,9 @@ class ParticleFilter():
         """
         Xtm1 = asarray(Xtm1)
         Xbart = self._flow_particles(Xtm1, zt)
-        Xt = self._resample(Xbart)
         if self.dbg:
             self.Xbart_dbg.append(Xbart)
-            self.Xt_dbg.append(Xt)
+        Xt = self._resample(Xbart)
         return Xt
 
     def _flow_particles(self, Xtm1, zt):

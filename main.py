@@ -73,7 +73,7 @@ def pzt(zt, xt):
     dx, dy, phi = xt[-3:]  # marker in body frame
     x, y, th = xt[:3]  # body in world frame
     zt_hat = SE2(x, y, th) @ SE2(dx, dy, phi) @ [0, 0, 1]
-    err = rms(zt - zt_hat)
+    err = sqrt(sum((zt - zt_hat[:-1])**2))
     return 1 / (1 + err)
 
 
