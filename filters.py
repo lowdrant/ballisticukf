@@ -38,7 +38,7 @@ class ParticleFilter():
         self.Xt_dbg = []
         self.ii_dbg = []
 
-    def __call__(self, Xtm1, zt, out=None):
+    def __call__(self, Xtm1, zt):
         """run particle filter
         INPUTS:
             Xtm1 -- MxN -- M particles of length-N state vectors at time t-1
@@ -52,7 +52,7 @@ class ParticleFilter():
         if self.dbg:
             self.Xbart_dbg.append(Xbart)
             self.Xt_dbg.append(Xt)
-        return out
+        return Xt
 
     def _flow_particles(self, Xtm1, zt):
         out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
