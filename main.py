@@ -100,18 +100,18 @@ for i, _ in enumerate(t):
 estmean = mean(Xt, 1)
 estmed = median(Xt, 1)
 
-gWB = zeros((3, 3, len(out)), dtype=float)
-gWB[:-1, :-1] = r2d(out[:, 2])
-gWB[0, -1] = out[:, 0]
-gWB[1, -1] = out[:, 1]
-gWB[-1, -1] = 1
+estgWB = zeros((3, 3, len(estmean)), dtype=float)
+estgWB[:-1, :-1] = r2d(estmean[:, 2])
+estgWB[0, -1] = estmean[:, 0]
+estgWB[1, -1] = estmean[:, 1]
+estgWB[-1, -1] = 1
 
-gBC = zeros_like(gWB)
-gBC[[0, 1, 2], [0, 1, 2]] = 1
-gBC[0, -1] = estmean[:, -2]
-gBC[1, -1] = estmean[:, -1]
+estgBC = zeros_like(estgWB)
+estgBC[[0, 1, 2], [0, 1, 2]] = 1
+estgBC[0, -1] = estmean[:, -2]
+estgBC[1, -1] = estmean[:, -1]
 
-est_ctrd = einsum('ijk,jmk->imk', gWB, gBC)[[0, 1], -1]
+est_ctrd = einsum('ijk,jmk->imk', estgWB, estgBC)[[0, 1], -1]
 
 # ===================================================================
 # Plot
