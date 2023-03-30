@@ -18,7 +18,7 @@ t1 = 2
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
 xi0 = (0.1, 0, 5)  # xdot,ydot,thetadot
-M = 100000
+M = 10000
 
 # ===================================================================
 # Simulate Point Motion
@@ -46,11 +46,7 @@ for i in range(npts):
     assert sum(abs(diff(d2))) < 1e-6, 'rigid body assumption violated!'
 
 # ===================================================================
-# Filtering
-# TODO: vectorize probability functions
-
-obs = einsum('ij...,j->i...', gp, [0, 0, 1])
-ctrd = obs[:-1].mean(1)  # maybe centroid will be easier to work with?
+# Priors
 
 
 def pxt(xtm1):
@@ -67,10 +63,10 @@ def pxt(xtm1):
     loc = array(xtm1, copy=1)
     if loc.ndim == 1:
         loc = loc[newaxis, ...]
-    for i in range(3):
+    for i in range(2):
         loc[..., i] += dt * loc[..., 3 + i]
-    loc[..., 4] -= dt
-    scale = [1, 1, pi / 2, 0.1, 0.1, 0.1, 1]
+    loc[..., 3] -= dt
+    scale = [1, 1, 0.1, 0.1, 1, 0.001, 0.001]
     return normal(loc=loc, scale=scale)
 
 
@@ -97,53 +93,62 @@ def pzt(zt, xt):
     if zt.ndim == 1:
         zt = zt[newaxis, :]
     r = xt[..., -1].T  # marker in body frame
-    x, y, th = xt[..., :3].T  # body in world frame
-    ctrd = c_[r, zeros_like(r), ones_like(r)].T
-    zt_hat = einsum('ijk,jk->ik', SE2(x, y, th), ctrd)
-    err = sum((zt.T - zt_hat[:-1])**2, 0)
+    x, y, dx, dy = xt[..., [0, 1, -2, -1]].T  # body in world frame
+    zt_hat = asarray([x + dx, y + dy])
+    err = sum((zt.T - zt_hat)**2, 0)
     return 1 / (1 + 100 * err)
 
+
+# ===================================================================
+# Filtering
+
+obs = einsum('ij...,j->i...', gp, [0, 0, 1])
+ctrd = obs[:-1].mean(1).T
 
 print('Starting particle filter...')
 tref = time()
 pf = ParticleFilter(pxt, pzt, dbg=1)
 Xt = zeros((len(t), M, 7))
-Xt[-1] = [*ctrd[..., 0], 0, 0, 0, 1, 0.5]
+Xt[-1] = [*ctrd[0], 0, 0, 0, 0, 0]
 seed(0)
 for i, _ in enumerate(t):
-    Xt[i] = pf(Xt[i - 1], ctrd[..., i])
+    Xt[i] = pf(Xt[i - 1], ctrd[i])
 print(f'Done! t={time()-tref:.2}s')
 
 # ===================================================================
 # Reconstruction
 
-estmean = mean(Xt, 1)
-estmed = median(Xt, 1)
+est = mean(Xt, 1)
+tru = zeros_like(est)
+tru[:, :5] = out[:, [0, 1, 3, 4, 5]]
+tru[:, [5, 6]] = out[:, [0, 1]] - ctrd
 
-estgWB = zeros((3, 3, len(estmean)), dtype=float)
-estgWB[:-1, :-1] = r2d(estmean[:, 2])
-estgWB[0, -1] = estmean[:, 0]
-estgWB[1, -1] = estmean[:, 1]
+estgWB = zeros((3, 3, len(est)), dtype=float)
+estgWB[:-1, :-1] = r2d(est[:, 2])
+estgWB[0, -1] = est[:, 0]
+estgWB[1, -1] = est[:, 1]
 estgWB[-1, -1] = 1
 
 estgBC = zeros_like(estgWB)
 estgBC[[0, 1, 2], [0, 1, 2]] = 1
-estgBC[0, -1] = estmean[:, -1]
+estgBC[0, -1] = est[:, -1]
 
-est_ctrd = einsum('ijk,jmk->imk', estgWB, estgBC)[[0, 1], -1]
+est_ctrd = einsum('ijk,jmk->imk', estgWB, estgBC)[[0, 1], -1].T
 
-dtrue = sqrt(sum((out[:, [0, 1]] - ctrd.T)**2, 1))
-dest = sqrt(sum((estmean[:, [0, 1]] - est_ctrd.T)**2, 1))
+dtrue = sqrt(sum((out[:, [0, 1]] - ctrd)**2, 1))
+dest = sqrt(sum((est[:, [0, 1]] - est_ctrd)**2, 1))
 
 # ===================================================================
 # Plot
 
+lbls = ['$x$', '$y$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$',
+        '$dx$', '$dy$']
+
 axp = newplot('parametric motion')
 axp.grid(0)
 axp.plot(gcom[0, -1], gcom[1, -1], label='CoM')
-axp.plot(*ctrd, label='marker centroid')
-axp.plot(*estmean.T[:2], '.-', label='estimated CoM')
-axp.plot(*est_ctrd, '.-', label='estimated marker')
+axp.plot(*ctrd.T, label='marker centroid')
+axp.plot(*est.T[:2], '.-', label='estimated CoM')
 axp.legend(loc='lower left')
 axp.set_xlabel('$x$')
 axp.set_ylabel('$y$')
@@ -151,36 +156,26 @@ axp.set_aspect('equal')
 
 num = 'filter output'
 plt.figure(num).clf()
-ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$',
-        '$dx$', '$dy$']
-_, axf = plt.subplots(nrows=Xt.shape[-1] - 1, sharex='all', num=num)
-for i, ax in enumerate(axf[:-1]):
-    ax.plot(t, out[:, i], '.-', label='ground truth')
-    ax.plot(t, estmean[:, i], '.-', label='estimate')
-    ax.set_ylabel(ylbl[i])
-axf[-1].plot(t, dtrue, '.-', c='tab:blue')
-axf[-1].plot(t, dest, '.-', c='tab:orange')
-axf[-1].set_ylabel('dist')
-
-num = 'pct err'
-axp = newplot(num)
-ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot{y}$',
-        '$\\dot{\\theta}$', '$dx$', '$dy$']
-for i in range(len(Xt.T) - 2):
-    if i == 2:
-        continue
-    pe = 100 * (out[:, i] - estmean[:, i]) / out[:, i]
-    axp.plot(t, pe, '.-', label=ylbl[i])
-axp.plot(t, 100 * (dtrue - dest) / dtrue, '.-', label='body-ctrd dist')
-axp.legend(loc='upper right')
-axp.set_xlabel('$t$')
-axp.set_title(axp.get_figure().get_label())
-axp.set_ylabel('percent error')
-
+_, axf = plt.subplots(nrows=len(Xt.T), sharex='all', num=num)
+for i, ax in enumerate(axf):
+    ax.plot(t, tru[:, i], '.-')
+    ax.plot(t, est[:, i], '.-')
+    ax.set_ylabel(lbls[i])
 for a in axf:
     a.grid()
-#    a.legend(loc='lower left')
 axf[-1].set_xlabel('$t$')
 axf[0].set_title(a.get_figure().get_label())
 
+num = 'pct err'
+axpct = newplot(num)
+axpct.grid(0)
+axpct.plot(t, zeros_like(t), 'k--', lw=3)
+for i, _ in enumerate(Xt.T):
+    pe = 100 * (tru[:, i] - est[:, i]) / tru[:, i]
+    axpct.plot(t, pe, '.-', label=lbls[i])
+axpct.legend(loc='upper right')
+axpct.set_xlabel('$t$')
+axpct.set_ylabel('percent error')
+
 ipychk()
+

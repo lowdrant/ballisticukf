@@ -33,7 +33,7 @@ def r2d(t):
     OUTPUTS:
         R -- 2x2xN... rotation matrices
     """
-    return array([[cos(t), -sin(t)], [sin(t), cos(t)]])
+    out = array([[cos(t), -sin(t)], [sin(t), cos(t)]])
 
 
 def ipychk():
@@ -64,16 +64,16 @@ def gen_transform(r, th):
 def SE2(x, y, th):
     """Generate SE(2) RBT from R^3 parameterization
     INPUTS:
-        x -- Nx1 --  x coord of transform
-        y -- Nx1 -- y coord of transform
+        x -- N... --  x coord of transform
+        y -- N... -- y coord of transform
         th -- angle of transform
     OUTPUTS:
-        g -- 3x3xN -- SE(2) RBT
+        g -- 3x3xN... -- SE(2) RBT
     """
     N = 1
     if not isscalar(x):
         N = len(x)
-    out = zeros((3, 3, N), dtype=float).squeeze()
+    out = zeros((N, 3, 3), dtype=float).squeeze()
     out[:2, :2] = r2d(th)
     out[0, 2] = x
     out[1, 2] = y
