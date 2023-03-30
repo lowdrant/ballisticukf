@@ -13,12 +13,12 @@ from filters import *
 from helpers import *
 
 # Constants
-dt = 0.01
+dt = 0.04
 t1 = 1
-npts = 4
+npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
-xi0 = (0, 0, 2)  # xdot,ydot,thetadot
-M = 10
+xi0 = (0.1, 0, 5)  # xdot,ydot,thetadot
+M = 100
 
 # ===================================================================
 # Simulate Point Motion
@@ -47,21 +47,20 @@ for i in range(npts):
 
 # ===================================================================
 # Filtering
+# TODO: vectorize probability functions
 
 obs = einsum('ij...,j->i...', gp, [0, 0, 1])
 ctrd = obs[:-1].mean(1)  # maybe centroid will be easier to work with?
 
 
 def pxt(xtm1):
-    sigma = [0.5, 0.5, 2, 0.1, 0.1, 0.1, 1, 1]
-    xtm1 = asarray(xtm1)
-    loc = xtm1.copy()
-#    print(loc)
-    # state positons move forward by velocity
+    """generate probability cloud of current state given prev state"""
+    loc = array(xtm1, copy=1)
     for i in range(3):
         loc[i] += dt * loc[3 + i]
     loc[4] -= dt
-    return normal(loc=loc, scale=0.001)
+    scale = [0.1, 0.01, pi / 10, 0.01, 0.01, 1, 0.01, 0.01]
+    return normal(loc=loc, scale=scale)
 
 
 def pzt(zt, xt):
@@ -77,19 +76,17 @@ def pzt(zt, xt):
         The form of the function makes low errors preferred while avoiding
         division by 0/numeric instability.
     """
-    xt = asarray(xt)
-    zt = asarray(zt)
+    xt, zt = asarray(xt), asarray(zt)
     dx, dy = xt[-2:]  # marker in body frame
     x, y, th = xt[:3]  # body in world frame
-    zt_hat = SE2(x, y, th) @ SE2(dx, dy, 0) @ [0, 0, 1]
-    err = sqrt(sum((zt - zt_hat[:-1])**2))
+    zt_hat = SE2(x, y, th) @ [dx, dy, 1]
+    err = sum((zt - zt_hat[:-1])**2)
     return 1 / (1 + err)
 
 
 pf = ParticleFilter(pxt, pzt, dbg=1)
-x0 = [*ctrd[..., 0], 0, 0, 0, 0, 0, 0]
 Xt = zeros((len(t), M, 8))
-Xt[-1] = x0
+Xt[-1] = [*ctrd[..., 0], 0, 0, 0, 1, 0.5, 0.5]
 seed(0)
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], ctrd[..., i])
@@ -113,10 +110,14 @@ estgBC[1, -1] = estmean[:, -1]
 
 est_ctrd = einsum('ijk,jmk->imk', estgWB, estgBC)[[0, 1], -1]
 
+dtrue = sqrt(sum((out[:, [0, 1]] - ctrd.T)**2, 1))
+dest = sqrt(sum((estmean[:, [0, 1]] - est_ctrd.T)**2, 1))
+
 # ===================================================================
 # Plot
 
 axp = newplot('parametric motion')
+axp.grid(0)
 axp.plot(gcom[0, -1], gcom[1, -1], label='CoM')
 axp.plot(*ctrd, label='marker centroid')
 axp.plot(*estmean.T[:2], '.-', label='estimated CoM')
@@ -135,23 +136,20 @@ for i, ax in enumerate(axf[:-1]):
     ax.plot(t, out[:, i], '.-', label='ground truth')
     ax.plot(t, estmean[:, i], '.-', label='estimate')
     ax.set_ylabel(ylbl[i])
-dtrue = sqrt(sum((out[:, [0, 1]] - ctrd.T)**2, 1))
-dest = sqrt(sum((estmean[:, [0, 1]] - est_ctrd.T)**2, 1))
 axf[-1].plot(t, dtrue, '.-', c='tab:blue')
 axf[-1].plot(t, dest, '.-', c='tab:orange')
 axf[-1].set_ylabel('dist')
 
 num = 'pct err'
-plt.figure(num).clf()
+axp = newplot(num)
 ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot{y}$',
         '$\\dot{\\theta}$', '$dx$', '$dy$']
-_, axp = plt.subplots(nrows=1, sharex='all', num=num)
 for i in range(len(Xt.T) - 2):
     if i == 2:
         continue
     pe = 100 * (out[:, i] - estmean[:, i]) / out[:, i]
     axp.plot(t, pe, '.-', label=ylbl[i])
-# axp.grid()
+axp.plot(t, 100 * (dtrue - dest) / dtrue, '.-', label='body-ctrd dist')
 axp.legend(loc='upper right')
 axp.set_xlabel('$t$')
 axp.set_title(axp.get_figure().get_label())
