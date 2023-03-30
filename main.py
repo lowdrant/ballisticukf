@@ -17,7 +17,7 @@ dt = 0.01
 t1 = 1
 npts = 4
 q0 = (0.1, -0.1, 0)   # x,y,theta
-xi0 = (1, 0, 2)  # xdot,ydot,thetadot
+xi0 = (0, 0, 2)  # xdot,ydot,thetadot
 M = 10
 
 # ===================================================================
@@ -128,15 +128,18 @@ axp.set_aspect('equal')
 
 num = 'filter output'
 plt.figure(num).clf()
-ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot(y}$', '$\\dot{\\theta}$',
+ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$',
         '$dx$', '$dy$']
-_, axf = plt.subplots(nrows=Xt.shape[-1], sharex='all', num=num)
-for i, ax in enumerate(axf[:-2]):
+_, axf = plt.subplots(nrows=Xt.shape[-1] - 1, sharex='all', num=num)
+for i, ax in enumerate(axf[:-1]):
     ax.plot(t, out[:, i], '.-', label='ground truth')
     ax.plot(t, estmean[:, i], '.-', label='estimate')
-    #axf[i].plot(t, estmed[:, i], '.-', label=f'med Xt[{i}]')
-    #ax.plot(t, gcom[i, -1], '.-', c=c[i], label=lbl[i])
     ax.set_ylabel(ylbl[i])
+dtrue = sqrt(sum((out[:, [0, 1]] - ctrd.T)**2, 1))
+dest = sqrt(sum((estmean[:, [0, 1]] - est_ctrd.T)**2, 1))
+axf[-1].plot(t, dtrue, '.-', c='tab:blue')
+axf[-1].plot(t, dest, '.-', c='tab:orange')
+axf[-1].set_ylabel('dist')
 
 num = 'pct err'
 plt.figure(num).clf()
@@ -148,7 +151,7 @@ for i in range(len(Xt.T) - 2):
         continue
     pe = 100 * (out[:, i] - estmean[:, i]) / out[:, i]
     axp.plot(t, pe, '.-', label=ylbl[i])
-axp.grid()
+# axp.grid()
 axp.legend(loc='upper right')
 axp.set_xlabel('$t$')
 axp.set_title(axp.get_figure().get_label())
