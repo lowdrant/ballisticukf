@@ -16,7 +16,7 @@ from helpers import *
 dt = 0.01
 t1 = 1
 npts = 4
-q0 = (0, 0, 0)   # x,y,theta
+q0 = (0.1, -0.1, 0)   # x,y,theta
 xi0 = (1, 0, 2)  # xdot,ydot,thetadot
 M = 10
 
@@ -137,6 +137,22 @@ for i, ax in enumerate(axf[:-2]):
     #axf[i].plot(t, estmed[:, i], '.-', label=f'med Xt[{i}]')
     #ax.plot(t, gcom[i, -1], '.-', c=c[i], label=lbl[i])
     ax.set_ylabel(ylbl[i])
+
+num = 'pct err'
+plt.figure(num).clf()
+ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot{y}$',
+        '$\\dot{\\theta}$', '$dx$', '$dy$']
+_, axp = plt.subplots(nrows=1, sharex='all', num=num)
+for i in range(len(Xt.T) - 2):
+    if i == 2:
+        continue
+    pe = 100 * (out[:, i] - estmean[:, i]) / out[:, i]
+    axp.plot(t, pe, '.-', label=ylbl[i])
+axp.grid()
+axp.legend(loc='upper right')
+axp.set_xlabel('$t$')
+axp.set_title(axp.get_figure().get_label())
+axp.set_ylabel('percent error')
 
 for a in axf:
     a.grid()
