@@ -14,11 +14,11 @@ from helpers import *
 
 # Constants
 dt = 0.05
-t1 = 2
+t1 = 3
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
 xi0 = (0.1, 0, 5)  # xdot,ydot,thetadot
-M = 100000
+M = 10000
 
 # ===================================================================
 # Simulate Point Motion
@@ -67,10 +67,13 @@ def pxt(xtm1):
     loc = array(xtm1, copy=1)
     if loc.ndim == 1:
         loc = loc[newaxis, ...]
-    for i in range(3):
-        loc[..., i] += dt * loc[..., 3 + i]
+    loc[..., 0] += dt * loc[..., 3] * \
+        loc[..., 5] * loc[..., 6] * sin(loc[..., 2])
+    loc[..., 1] += dt * loc[..., 4] * \
+        loc[..., 5] * loc[..., 6] * cos(loc[..., 2])
+    loc[..., 2] += dt * loc[..., 4]
     loc[..., 4] -= dt
-    scale = [1, 1, pi / 2, 0.1, 0.1, 0.1, 1]
+    scale = [0.1, 0.1, pi / 2, 0.1, 0.1, 0.1, 0.1]
     return normal(loc=loc, scale=scale)
 
 
@@ -135,6 +138,13 @@ est_ctrd = einsum('ijk,jmk->imk', estgWB, estgBC)[[0, 1], -1]
 dtrue = sqrt(sum((out[:, [0, 1]] - ctrd.T)**2, 1))
 dest = sqrt(sum((estmean[:, [0, 1]] - est_ctrd.T)**2, 1))
 
+estr = estmean[:, -1]
+mo = zeros_like(out)
+mo[:, [0, 1]] = ctrd.T
+mo[:, 3] = out[:, 3] + out[:, 5] * estr * sin(out[:, 2])
+mo[:, 4] = out[:, 4] + out[:, 5] * estr * cos(out[:, 2])
+mo[:, 5] = out[:, 5]
+
 # ===================================================================
 # Plot
 
@@ -142,8 +152,8 @@ axp = newplot('parametric motion')
 axp.grid(0)
 axp.plot(gcom[0, -1], gcom[1, -1], label='CoM')
 axp.plot(*ctrd, label='marker centroid')
-axp.plot(*estmean.T[:2], '.-', label='estimated CoM')
-axp.plot(*est_ctrd, '.-', label='estimated marker')
+axp.plot(*estmean.T[:2], '.-', label='pf output')
+# axp.plot(*est_ctrd, '.-', label='estimated marker')
 axp.legend(loc='lower left')
 axp.set_xlabel('$x$')
 axp.set_ylabel('$y$')
@@ -151,21 +161,31 @@ axp.set_aspect('equal')
 
 num = 'filter output'
 plt.figure(num).clf()
-ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$',
-        '$dx$', '$dy$']
-_, axf = plt.subplots(nrows=Xt.shape[-1] - 1, sharex='all', num=num)
+ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot{y}$',
+        '$\\dot{\\theta}$', '$r$']
+_, axf = plt.subplots(nrows=Xt.shape[-1], sharex='all', num=num)
 for i, ax in enumerate(axf[:-1]):
-    ax.plot(t, out[:, i], '.-', label='ground truth')
+    ax.plot(t, mo[:, i], '.-', label='ground truth')
     ax.plot(t, estmean[:, i], '.-', label='estimate')
     ax.set_ylabel(ylbl[i])
-axf[-1].plot(t, dtrue, '.-', c='tab:blue')
-axf[-1].plot(t, dest, '.-', c='tab:orange')
+axf[-1].plot(t, sqrt(sum((out[:, :2] - ctrd.T)**2, 1)), '.-')
+axf[-1].plot(t, estmean[:, -1], '.-')
 axf[-1].set_ylabel('dist')
+for a in axf:
+    a.grid()
+axf[-1].set_xlabel('$t$')
+axf[0].set_title(a.get_figure().get_label())
 
-num = 'pct err'
+
+num = 'err'
 axp = newplot(num)
+se = sqrt(sum((ctrd - estmean.T[:2])**2, 0))
+rmse = cumsum(se) / range(1, len(se) + 1)
+axp.plot(t, rmse, '.-', label='running MSE')
+axp.plot(t, se, '.-', label='SE')
+'''
 ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot{y}$',
-        '$\\dot{\\theta}$', '$dx$', '$dy$']
+        '$\\dot{\\theta}$']
 for i in range(len(Xt.T) - 2):
     if i == 2:
         continue
@@ -176,11 +196,6 @@ axp.legend(loc='upper right')
 axp.set_xlabel('$t$')
 axp.set_title(axp.get_figure().get_label())
 axp.set_ylabel('percent error')
-
-for a in axf:
-    a.grid()
-#    a.legend(loc='lower left')
-axf[-1].set_xlabel('$t$')
-axf[0].set_title(a.get_figure().get_label())
+'''
 
 ipychk()
