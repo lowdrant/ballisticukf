@@ -64,11 +64,11 @@ def gen_transform(r, th):
 def SE2(x, y, th):
     """Generate SE(2) RBT from R^3 parameterization
     INPUTS:
-        x -- Nx1 --  x coord of transform
-        y -- Nx1 -- y coord of transform
+        x -- N... --  x coord of transform
+        y -- N... -- y coord of transform
         th -- angle of transform
     OUTPUTS:
-        g -- 3x3xN -- SE(2) RBT
+        g -- 3x3xN... -- SE(2) RBT
     """
     N = 1
     if not isscalar(x):
