@@ -18,7 +18,7 @@ t1 = 2
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
 xi0 = (0.1, 0, 5)  # xdot,ydot,thetadot
-M = 10000
+M = 100000
 
 # ===================================================================
 # Simulate Point Motion
@@ -57,6 +57,12 @@ def pxt(xtm1):
     """generate probability cloud of current state given prev state
     INPUTS:
         xtm1 -- NxM -- N prior estimates for M states
+    NOTES:
+        Modeling motion of off-axis point, since that's what we are observing
+
+        For a disk at (x,y) moving at (vx,vy) with angle a and angular
+        velocity w, a point at radius r will have
+        observed velocity vo (vx+w*r*sina, vy+w*r*cosa)
     """
     loc = array(xtm1, copy=1)
     if loc.ndim == 1:
@@ -64,7 +70,7 @@ def pxt(xtm1):
     for i in range(3):
         loc[..., i] += dt * loc[..., 3 + i]
     loc[..., 4] -= dt
-    scale = [1, 1, pi / 2, 0.1, 0.1, 0.1, 1, 1]
+    scale = [1, 1, pi / 2, 0.1, 0.1, 0.1, 1]
     return normal(loc=loc, scale=scale)
 
 
@@ -90,9 +96,9 @@ def pzt(zt, xt):
         xt = xt[newaxis, :]
     if zt.ndim == 1:
         zt = zt[newaxis, :]
-    dx, dy = xt[..., -2:].T  # marker in body frame
+    r = xt[..., -1].T  # marker in body frame
     x, y, th = xt[..., :3].T  # body in world frame
-    ctrd = c_[dx, dy, ones_like(dx)].T
+    ctrd = c_[r, zeros_like(r), ones_like(r)].T
     zt_hat = einsum('ijk,jk->ik', SE2(x, y, th), ctrd)
     err = sum((zt.T - zt_hat[:-1])**2, 0)
     return 1 / (1 + 100 * err)
@@ -101,12 +107,13 @@ def pzt(zt, xt):
 print('Starting particle filter...')
 tref = time()
 pf = ParticleFilter(pxt, pzt, dbg=1)
-Xt = zeros((len(t), M, 8))
-Xt[-1] = [*ctrd[..., 0], 0, 0, 0, 1, 0.5, 0.5]
+Xt = zeros((len(t), M, 7))
+Xt[-1] = [*ctrd[..., 0], 0, 0, 0, 1, 0.5]
 seed(0)
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], ctrd[..., i])
 print(f'Done! t={time()-tref:.2}s')
+
 # ===================================================================
 # Reconstruction
 
@@ -121,8 +128,7 @@ estgWB[-1, -1] = 1
 
 estgBC = zeros_like(estgWB)
 estgBC[[0, 1, 2], [0, 1, 2]] = 1
-estgBC[0, -1] = estmean[:, -2]
-estgBC[1, -1] = estmean[:, -1]
+estgBC[0, -1] = estmean[:, -1]
 
 est_ctrd = einsum('ijk,jmk->imk', estgWB, estgBC)[[0, 1], -1]
 
