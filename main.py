@@ -14,7 +14,7 @@ from helpers import *
 
 # Constants
 dt = 0.05
-t1 = 1
+t1 = 2
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
 xi0 = (0.1, 0, 5)  # xdot,ydot,thetadot
@@ -64,7 +64,7 @@ def pxt(xtm1):
     for i in range(3):
         loc[..., i] += dt * loc[..., 3 + i]
     loc[..., 4] -= dt
-    scale = [1, 1, pi / 2, 1, 1, 10, 2, 2]
+    scale = [1, 1, pi / 2, 0.1, 0.1, 0.1, 1, 1]
     return normal(loc=loc, scale=scale)
 
 
@@ -95,7 +95,7 @@ def pzt(zt, xt):
     ctrd = c_[dx, dy, ones_like(dx)].T
     zt_hat = einsum('ijk,jk->ik', SE2(x, y, th), ctrd)
     err = sum((zt.T - zt_hat[:-1])**2, 0)
-    return 0.1 / (1 + 100 * err)
+    return 1 / (1 + 100 * err)
 
 
 print('Starting particle filter...')
