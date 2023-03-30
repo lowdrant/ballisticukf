@@ -17,8 +17,8 @@ dt = 0.01
 t1 = 1
 npts = 4
 q0 = (0, 0, 0)   # x,y,theta
-xi0 = (0, 0, 2)  # xdot,ydot,thetadot
-M = 100
+xi0 = (1, 0, 2)  # xdot,ydot,thetadot
+M = 10
 
 # ===================================================================
 # Simulate Point Motion
@@ -35,7 +35,7 @@ tf = asarray(tf)
 # CoM Motion
 x0 = r_[q0, xi0]
 t = arange(0, t1, dt)
-gcom = sim(x0, t)
+gcom, out = sim(x0, t, return_state=1)
 
 # Point Motion
 gp = einsum('ijk,njm->imnk', gcom, tf)
@@ -46,21 +46,22 @@ for i in range(npts):
     assert sum(abs(diff(d2))) < 1e-6, 'rigid body assumption violated!'
 
 # ===================================================================
-# Estimation
+# Filtering
 
 obs = einsum('ij...,j->i...', gp, [0, 0, 1])
 ctrd = obs[:-1].mean(1)  # maybe centroid will be easier to work with?
 
 
 def pxt(xtm1):
-    sigma = 0.01
+    sigma = [0.5, 0.5, 2, 0.1, 0.1, 0.1, 1, 1]
     xtm1 = asarray(xtm1)
     loc = xtm1.copy()
+#    print(loc)
     # state positons move forward by velocity
     for i in range(3):
         loc[i] += dt * loc[3 + i]
     loc[4] -= dt
-    return normal(loc, [sigma] * len(loc))
+    return normal(loc=loc, scale=0.001)
 
 
 def pzt(zt, xt):
@@ -78,31 +79,48 @@ def pzt(zt, xt):
     """
     xt = asarray(xt)
     zt = asarray(zt)
-    dx, dy, phi = xt[-3:]  # marker in body frame
+    dx, dy = xt[-2:]  # marker in body frame
     x, y, th = xt[:3]  # body in world frame
-    zt_hat = SE2(x, y, th) @ SE2(dx, dy, phi) @ [0, 0, 1]
+    zt_hat = SE2(x, y, th) @ SE2(dx, dy, 0) @ [0, 0, 1]
     err = sqrt(sum((zt - zt_hat[:-1])**2))
-    return 1 / (0.1 + err)
+    return 1 / (1 + err)
 
 
 pf = ParticleFilter(pxt, pzt, dbg=1)
-x0 = [*ctrd[..., 0], 0, 0, 0, 0, 0, 0, 0]
-Xt = zeros((len(t), M, 9))
+x0 = [*ctrd[..., 0], 0, 0, 0, 0, 0, 0]
+Xt = zeros((len(t), M, 8))
 Xt[-1] = x0
+seed(0)
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], ctrd[..., i])
 
-est = mean(Xt, 1)
+# ===================================================================
+# Reconstruction
+
+estmean = mean(Xt, 1)
+estmed = median(Xt, 1)
+
+gWB = zeros((3, 3, len(out)), dtype=float)
+gWB[:-1, :-1] = r2d(out[:, 2])
+gWB[0, -1] = out[:, 0]
+gWB[1, -1] = out[:, 1]
+gWB[-1, -1] = 1
+
+gBC = zeros_like(gWB)
+gBC[[0, 1, 2], [0, 1, 2]] = 1
+gBC[0, -1] = estmean[:, -2]
+gBC[1, -1] = estmean[:, -1]
+
+est_ctrd = einsum('ijk,jmk->imk', gWB, gBC)[[0, 1], -1]
 
 # ===================================================================
 # Plot
 
 axp = newplot('parametric motion')
-axp.plot(gcom[0, -1], gcom[1, -1], label='CoM', lw=3)
-for i in range(npts):
-    axp.plot(gp[0, -1, i], gp[1, -1, i], label=f'M{i+1}')
-axp.plot(*ctrd, label='marker centroid', lw=3)
-axp.plot(*est.T[:2], '.-', label='estimated CoM')
+axp.plot(gcom[0, -1], gcom[1, -1], label='CoM')
+axp.plot(*ctrd, label='marker centroid')
+axp.plot(*estmean.T[:2], '.-', label='estimated CoM')
+axp.plot(*est_ctrd, '.-', label='estimated marker')
 axp.legend(loc='lower left')
 axp.set_xlabel('$x$')
 axp.set_ylabel('$y$')
@@ -110,19 +128,20 @@ axp.set_aspect('equal')
 
 num = 'filter output'
 plt.figure(num).clf()
-_, axf = plt.subplots(nrows=2, sharex='all', num=num)
-c = ['tab:' + v for v in ('blue', 'orange')]
-lbl = ['true ' + v for v in ('xc', 'yc')]
-ylbl = [f'${v}$' for v in ('x', 'y')]
-for i in range(2):
-    axf[i].plot(t, est[:, i], '.-', label=f'Xt[{i}]')
-    axf[i].plot(t, gcom[i, -1], '.-', c=c[i], label=lbl[i])
-    axf[i].set_ylabel(ylbl[i])
+ylbl = ['$x$', '$y$', '$\\theta$', '$\\dot{x}$', '$\\dot(y}$', '$\\dot{\\theta}$',
+        '$dx$', '$dy$']
+_, axf = plt.subplots(nrows=Xt.shape[-1], sharex='all', num=num)
+for i, ax in enumerate(axf[:-2]):
+    ax.plot(t, out[:, i], '.-', label='ground truth')
+    ax.plot(t, estmean[:, i], '.-', label='estimate')
+    #axf[i].plot(t, estmed[:, i], '.-', label=f'med Xt[{i}]')
+    #ax.plot(t, gcom[i, -1], '.-', c=c[i], label=lbl[i])
+    ax.set_ylabel(ylbl[i])
+
 for a in axf:
     a.grid()
-    a.legend(loc='lower left')
-axf[1].set_xlabel('$t$')
+#    a.legend(loc='lower left')
+axf[-1].set_xlabel('$t$')
 axf[0].set_title(a.get_figure().get_label())
 
 ipychk()
-
