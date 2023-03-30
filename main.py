@@ -8,17 +8,17 @@ Choose units (mass, length, time) s.t. m = r = g = I = 1
 import matplotlib.pyplot as plt
 from numpy import *
 from numpy.random import normal, rand, seed
-
+from time import time
 from filters import *
 from helpers import *
 
 # Constants
-dt = 0.04
+dt = 0.05
 t1 = 1
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
 xi0 = (0.1, 0, 5)  # xdot,ydot,thetadot
-M = 100
+M = 10000
 
 # ===================================================================
 # Simulate Point Motion
@@ -54,12 +54,17 @@ ctrd = obs[:-1].mean(1)  # maybe centroid will be easier to work with?
 
 
 def pxt(xtm1):
-    """generate probability cloud of current state given prev state"""
+    """generate probability cloud of current state given prev state
+    INPUTS:
+        xtm1 -- NxM -- N prior estimates for M states
+    """
     loc = array(xtm1, copy=1)
+    if loc.ndim == 1:
+        loc = loc[newaxis, ...]
     for i in range(3):
-        loc[i] += dt * loc[3 + i]
-    loc[4] -= dt
-    scale = [0.1, 0.01, pi / 10, 0.01, 0.01, 1, 0.01, 0.01]
+        loc[..., i] += dt * loc[..., 3 + i]
+    loc[..., 4] -= dt
+    scale = [1, 1, pi / 2, 1, 1, 10, 2, 2]
     return normal(loc=loc, scale=scale)
 
 
@@ -67,30 +72,41 @@ def pzt(zt, xt):
     """"Probability" that observations zt came from state xt. Implemented as a
     cost function of RBT prediction error of zt.
 
+    INPUTS:
+        zt -- NxK -- N observations of K observables quantities
+        xt -- NxM -- N estimates of M states
+
     NOTES:
         Since zt is a rigid point on body xt, augment xt with RBT to zt.
         The particle filter renormalizes the probability of the particles,
-        so the output of this function doesn't need to cleanly integrate to 1.        
-        This lets us return 1/(1+err), where `err` is the Euclidean distance
-        between the observed marker and its predicted location by the RBTs.
-        The form of the function makes low errors preferred while avoiding
-        division by 0/numeric instability.
+        so the output of this function doesn't need to cleanly integrate to 
+        1. This lets us return 1/(1+err), where `err` is the Euclidean
+        distance between the observed marker and its predicted location by the
+        RBTs. The form of the function makes low errors preferred while
+        avoiding division by 0/numeric instability.
     """
     xt, zt = asarray(xt), asarray(zt)
-    dx, dy = xt[-2:]  # marker in body frame
-    x, y, th = xt[:3]  # body in world frame
-    zt_hat = SE2(x, y, th) @ [dx, dy, 1]
-    err = sum((zt - zt_hat[:-1])**2)
-    return 1 / (1 + err)
+    if xt.ndim == 1:
+        xt = xt[newaxis, :]
+    if zt.ndim == 1:
+        zt = zt[newaxis, :]
+    dx, dy = xt[..., -2:].T  # marker in body frame
+    x, y, th = xt[..., :3].T  # body in world frame
+    ctrd = c_[dx, dy, ones_like(dx)].T
+    zt_hat = einsum('ijk,jk->ik', SE2(x, y, th), ctrd)
+    err = sum((zt.T - zt_hat[:-1])**2, 0)
+    return 0.1 / (1 + 100 * err)
 
 
+print('Starting particle filter...')
+tref = time()
 pf = ParticleFilter(pxt, pzt, dbg=1)
 Xt = zeros((len(t), M, 8))
 Xt[-1] = [*ctrd[..., 0], 0, 0, 0, 1, 0.5, 0.5]
 seed(0)
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], ctrd[..., i])
-
+print(f'Done! t={time()-tref:.2}s')
 # ===================================================================
 # Reconstruction
 

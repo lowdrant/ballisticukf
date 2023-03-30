@@ -68,9 +68,9 @@ def SE2(x, y, th):
         y -- y coord of transform
         th -- angle of transform
     OUTPUTS:
-        g -- 3x3 -- SE(2) RBT
+        g -- 3x3xN -- SE(2) RBT
     """
-    out = zeros((3, 3), dtype=float)
+    out = zeros((3, 3, len(x)), dtype=float)
     out[:2, :2] = r2d(th)
     out[0, 2] = x
     out[1, 2] = y

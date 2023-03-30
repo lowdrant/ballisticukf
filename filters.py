@@ -11,9 +11,9 @@ class ParticleFilter():
     """Implements particle filter as described in Thrun Chp4 p98. 
 
     INPUTS:
-        pxt -- callable->N -- samples current state given prior state
-        pzt -- callable->float -- returns probability of observations zt
-                                  given state xt
+        pxt -- callable->N -- vectorized! samples current state given prior state
+        pzt -- callable->float -- vectorized! returns probability of observations
+                                  zt given state xt
 
     USAGE:
     >>> pxt = # def p(x_t | u_t, x_{t-1})
@@ -55,11 +55,8 @@ class ParticleFilter():
 
     def _flow_particles(self, Xtm1, zt):
         out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
-        for m in range(len(Xtm1)):
-            xt = self.pxt(Xtm1[m])  # x_t^{[m]}
-            wt = self.pzt(zt, xt)  # w_t^{[m]}
-            out[m, :-1] = xt
-            out[:, -1] = wt
+        out[:, :-1] = self.pxt(Xtm1)  # x_t^{[m]}
+        out[:, -1] = self.pzt(zt, out[:, :-1])  # w_t^{[m]}
         return out
 
     def _resample(self, Xbart):
