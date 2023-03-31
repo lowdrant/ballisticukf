@@ -23,6 +23,14 @@ For simplicity, I'm going to work with a spinning disk in moving in 2D.
 ### A Note on Units
 Our disk has mass `m` and radius `r` and experiences gravitational acceleration `g`. We can choose units of mass, length, and time so that `m = r = g = 1`. Then all results are dependent on _ratios_, primarily initial velocity to `g`. That way I can focus on actually working without worrying about confounding details, i.e. accidentally making mass negative.
 
+## TODO
+1. filter constructor choose b/t vector or iterative implementations
+1. set vectorized shape conventions
+1. add capacity to pre-allocate memory for numba niceness
+1. UKF implementation
+1. EKF implementation
+
+
 ## References
 [1] Thrun, Sebastian, et al. Probabilistic Robotics. MIT Press, 2010. ISBN 10: 0262201623ISBN
  
