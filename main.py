@@ -65,10 +65,12 @@ def pxt(xtm1):
         loc = loc[newaxis, ...]
     for i in range(2):
         loc[..., i] += dt * loc[..., 3 + i]
+    theta = arctan2(loc[..., -1] - loc[..., 1], loc[..., -2] - loc[..., 0])
+    r = sqrt(sum(loc[..., -2:]**2, 1))
+    loc[..., -2] += dt * loc[..., 2] + dt * r * sin(theta) * loc[..., -3]
+    loc[..., -1] += dt * loc[..., 3] + dt * r * cos(theta) * loc[..., -3]
     loc[..., 3] -= dt
-    loc[:, [-2, -1]] = einsum('ijk,kj->ki',
-                              r2d(dt * loc[:, -3]), loc[:, [-2, -1]])
-    scale = [1, 1, 0.1, 0.1, 1, 0.1, 0.1]
+    scale = [0.1] * len(loc.T)
     return normal(loc=loc, scale=scale)
 
 
@@ -94,10 +96,7 @@ def pzt(zt, xt):
         xt = xt[newaxis, :]
     if zt.ndim == 1:
         zt = zt[newaxis, :]
-    r = xt[..., -1].T  # marker in body frame
-    x, y, dx, dy = xt[..., [0, 1, -2, -1]].T  # body in world frame
-    zt_hat = asarray([x + dx, y + dy])
-    err = sum((zt.T - zt_hat)**2, 0)
+    err = sum((zt - xt[..., -2:])**2, 1)
     return 1 / (1 + 100 * err)
 
 
