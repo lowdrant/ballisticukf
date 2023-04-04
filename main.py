@@ -5,13 +5,16 @@ completed computations in ipython debugging sessions
 
 Choose units (mass, length, time) s.t. m = r = g = I = 1
 """
+from itertools import combinations
+from time import time
+
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from numpy import *
 from numpy.random import normal, rand, seed
-from time import time
+
 from filters import *
 from helpers import *
-import matplotlib.colors as mcolors
 
 # Constants
 dt = 0.01
@@ -21,7 +24,6 @@ q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 0.5)  # xdot,ydot,thetadot
 M = 100
 
-use_rel = 1
 scale = [0.01] * 2 + [0.0001] * 2 + [0.1] + [0.000001] * (2 * npts)
 
 # ===================================================================
@@ -81,64 +83,6 @@ def pxt_rel(xtm1):
     return normal(loc=loc, scale=scale)
 
 
-def pxt_abs(xtm1):
-    """generate probability cloud of current state given prev state
-    WARN: for absolute marker positions
-    SEE ALSO: pxt_rel
-    INPUTS:
-        xtm1 -- NxM -- N prior estimates for M states
-    OUTPUTS:
-        out -- NxM -- N current estimates for M states
-    NOTES:
-        - `pxt_rel` performs actual computations
-        - 
-    """
-    loc = array(xtm1, copy=1)
-    prev_v = loc[..., [2, 3]].copy()
-    # markers to rel distance
-    for i in range(5, len(loc.T)):
-        loc[..., i] -= loc[..., (i + 1) % 2]
-    out = pxt_rel(loc)
-    # markers to abs distance
-    for i in range(5, len(loc.T)):
-        k = (i + 1) % 2
-        out[..., i] += out[..., k] + dt * prev_v[..., k]
-    return out
-
-
-def pzt_abs(zt, xt):
-    """"Probability" that observations zt came from state xt. Implemented as a
-    cost function of RBT prediction error of zt.
-    WARN: for absolue marker positions
-    INPUTS:
-        zt -- NxK -- N observations of K observables quantities
-        xt -- NxM -- N estimates of M states
-
-    NOTES:
-        Since zt is a rigid point on body xt, augment xt with RBT to zt.
-        The particle filter renormalizes the probability of the particles,
-        so the output of this function doesn't need to cleanly integrate to 
-        1. This lets us return 1/(1+err), where `err` is the Euclidean
-        distance between the observed marker and its predicted location by the
-        RBTs. The form of the function makes low errors preferred while
-        avoiding division by 0/numeric instability.
-    """
-    xt, zt = asarray(xt), asarray(zt)
-    xt = xt[newaxis, :] if xt.ndim == 1 else xt
-    zt = zt[newaxis, :] if zt.ndim == 1 else zt
-    err = sum((zt - xt[..., 5:])**2, -1)
-    # pairwise distance error
-    # '''
-    pairs = list(combinations(range(0, len(xt.T) - 5, 2), 2))
-    for i1, i2 in pairs:
-        k1, k2 = i1 + 5, i2 + 5
-        dz = (zt[..., [i1, i1 + 1]] - zt[..., [i2, i2 + 1]])**2
-        dx = (xt[..., [k1, k1 + 1]] - xt[..., [k2, k2 + 1]])**2
-        err += sum((dz - dx)**2, -1)
-    # '''
-    return 1 / (1 + 100 * err)
-
-
 def pzt_rel(zt, xt):
     """"Probability" that observations zt came from state xt. Implemented as a
     cost function of RBT prediction error of zt.
@@ -185,9 +129,7 @@ ctrd = obs.mean(1).T
 
 print('Starting particle filter...')
 tref = time()
-pf = ParticleFilter(pxt_abs, pzt_abs)
-if use_rel:
-    pf = ParticleFilter(pxt_rel, pzt_rel)
+pf = ParticleFilter(pxt_rel, pzt_rel)
 Xt = zeros((len(t), M, 5 + len(obs.T[0].flatten())))
 Xt[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
 seed(0)
@@ -265,4 +207,3 @@ for i in range(obs.shape[1]):
 ax.legend(loc='upper left')
 
 ipychk()
-
