@@ -94,16 +94,14 @@ def pxt_abs(xtm1):
         - 
     """
     loc = array(xtm1, copy=1)
-    prev_vxvy = loc[..., [2, 3]].copy()
-    # xtm1[...,0]->ctrd_x ; xtm1[...,5]->mrkr0_x
+    prev_v = loc[..., [2, 3]].copy()
     # markers to rel distance
     for i in range(5, len(loc.T)):
         loc[..., i] -= loc[..., (i + 1) % 2]
     out = pxt_rel(loc)
     # markers to abs distance
     for i in range(5, len(loc.T)):
-        k = (i + 1) % 2
-        out[..., i] += out[..., k] + dt * prev_vxvy[..., k]
+        out[..., i] += out[..., k] + dt * prev_v[..., (i + 1) % 2]
     return out
 
 
