@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Run simulation and estimation. Makes use of try/excepts to skip already
-completed computations in ipython debugging sessions
+Run simulation and estimation.
 
 Choose units (mass, length, time) s.t. m = r = g = I = 1
 """
@@ -24,32 +23,10 @@ q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 0.5)  # xdot,ydot,thetadot
 M = 100
 
-scale = [0.01] * 2 + [0.0001] * 2 + [0.1] + [0.000001] * (2 * npts)
-
-# ===================================================================
-# Simulate Point Motion
-
-# Point Observations
-seed(0)
-tf = []
-for i in range(npts):
-    r = rand()
-    th = 2 * pi * rand()
-    tf.append(gen_transform(r, th))
-tf = asarray(tf)
-
-# CoM Motion
-x0 = r_[q0, xi0]
 t = arange(0, t1, dt)
-gcom, out = sim(x0, t, return_state=1)
+gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
 
-# Point Motion
-gp = einsum('ijk,njm->imnk', gcom, tf)
-
-# Simple Validation
-for i in range(npts):
-    d2 = (gcom[0, -1] - gp[0, -1, i])**2 + (gcom[1, -1] - gp[1, -1, i])**2
-    assert sum(abs(diff(d2))) < 1e-6, 'rigid body assumption violated!'
+scale = [0.01] * 2 + [0.0001] * 2 + [0.1] + [0.000001] * (2 * npts)
 
 # ===================================================================
 # Priors
@@ -122,11 +99,8 @@ def pzt_rel(zt, xt):
 
 
 # ===================================================================
+
 # Filtering
-
-obs = einsum('ij...,j->i...', gp, [0, 0, 1])[:-1]
-ctrd = obs.mean(1).T
-
 print('Starting particle filter...')
 tref = time()
 pf = ParticleFilter(pxt_rel, pzt_rel)
@@ -137,13 +111,9 @@ for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], obs.T[i].flatten())
 print(f'Done! t={time()-tref:.2f}s')
 
-# ===================================================================
 # Reconstruction
-
 est = mean(Xt, 1)
-if use_rel:
-    est[:, 5:] += est[:, [0, 1] * ((len(est.T) - 5) // 2)]
-
+est[:, 5:] += est[:, [0, 1] * ((len(est.T) - 5) // 2)]
 tru = zeros_like(est)
 tru[:, :5] = out[:, [0, 1, 3, 4, 5]]  # 2 is theta; skip
 tru[:, 5:] = obs.T.reshape(len(obs.T), prod([v for v in obs.T.shape[1:]]))

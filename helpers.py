@@ -1,4 +1,5 @@
-__all__ = ['r2d', 'newplot', 'ipychk', 'gen_transform', 'sim', 'SE2', 'rms']
+__all__ = ['r2d', 'newplot', 'ipychk', 'gen_transform',
+           'sim', 'SE2', 'rms', 'gen_markers', 'compute_motion']
 """
 Helper functions to keep main.py clean and readable
 """
@@ -6,6 +7,7 @@ Helper functions to keep main.py clean and readable
 import matplotlib.pyplot as plt
 from numpy import *
 from scipy.integrate import odeint
+from numpy.random import seed, rand
 
 
 def newplot(num=None):
@@ -121,9 +123,36 @@ def rms(x, axis=None):
     """Compute RMS of x
     INPUTS:
         x -- Nx... array of data
-        axis -- (optional) axis along which to compute mean 
+        axis -- (optional) axis along which to compute mean
     OUTPUTS:
         rms -- sqrt((x**2).mean(axis))
     """
     x = asarray(x)
     return sqrt((x**2).mean(axis=axis))
+
+
+def gen_markers(npts):
+    seed(0)
+    tf = []
+    for i in range(npts):
+        r = rand()
+        th = 2 * pi * rand()
+        tf.append(gen_transform(r, th))
+    return asarray(tf)
+
+
+def compute_motion(x0, t, npts):
+    # Body Motion
+    gcom, out = sim(x0, t, return_state=1)
+
+    # Point Motion
+    tf = gen_markers(npts)
+    gp = einsum('ijk,njm->imnk', gcom, tf)
+    obs = einsum('ij...,j->i...', gp, [0, 0, 1])[:-1]
+
+    # Simple Validation
+    for i in range(npts):
+        d2 = (gcom[0, -1] - gp[0, -1, i])**2 + (gcom[1, -1] - gp[1, -1, i])**2
+        assert sum(abs(diff(d2))) < 1e-6, 'rigid body assumption violated!'
+
+    return gcom, out, obs
