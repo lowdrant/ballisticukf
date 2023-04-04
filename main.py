@@ -19,7 +19,7 @@ t1 = 1
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
 xi0 = (0, -0, 7)  # xdot,ydot,thetadot
-M = 1000
+M = 10000
 
 # ===================================================================
 # Simulate Point Motion
@@ -63,7 +63,7 @@ def pxt(xtm1):
     """
     loc = array(xtm1, copy=1)
     loc = loc[newaxis, ...] if loc.ndim == 1 else loc
-    scale = [0.1] * 5 + [0.1] * (len(loc.T) - 5)
+    scale = [0.1] * 2 + [1] * 2 + [2] + [0.001] * (len(loc.T) - 5)
     # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 3 + i]
