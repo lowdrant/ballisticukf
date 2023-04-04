@@ -163,9 +163,8 @@ def pzt_rel(zt, xt):
     # coordinate error
     # '''
     n = len(xt.T) - 5
-    dx = (zt[..., range(0, n, 2)]
-          - xt[..., range(5, n + 5, 2)] - xt[..., [0] * (n // 2)])
-    err += sum(dx**2, -1)
+    d = zt - xt[..., [0, 1] * (n // 2)] - xt[..., range(5, n + 5)]
+    err += sum(d**2, -1)
     # '''
     # pairwise distance error
     pairs = list(combinations(range(0, len(xt.T) - 5, 2), 2))
