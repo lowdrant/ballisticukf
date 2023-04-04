@@ -15,11 +15,11 @@ import matplotlib.colors as mcolors
 
 # Constants
 dt = 0.01
-t1 = 1
+t1 = 10
 npts = 5
 q0 = (0, 0, 0)   # x,y,theta
-xi0 = (0, 0, 5)  # xdot,ydot,thetadot
-M = 10000
+xi0 = (0, 0, 4)  # xdot,ydot,thetadot
+M = 100
 
 use_rel = 1
 
@@ -66,7 +66,7 @@ def pxt_rel(xtm1):
     """
     loc = array(xtm1, copy=1)
     loc = loc[newaxis, ...] if loc.ndim == 1 else loc
-    scale = [0.01] * 2 + [0.1] * 2 + [10] + [0.1] * (len(loc.T) - 5)
+    scale = [0.0001] * 2 + [0.001] * 2 + [10] + [0.1] * (len(loc.T) - 5)
     # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 2 + i]
@@ -162,7 +162,7 @@ def pzt_rel(zt, xt):
 # Filtering
 
 obs = einsum('ij...,j->i...', gp, [0, 0, 1])[:-1]
-ctrd = obs[:-1].mean(1).T
+ctrd = obs.mean(1).T
 
 print('Starting particle filter...')
 tref = time()
