@@ -15,7 +15,7 @@ import matplotlib.colors as mcolors
 
 # Constants
 dt = 0.01
-t1 = 10
+t1 = 200
 npts = 5
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 4)  # xdot,ydot,thetadot
@@ -66,7 +66,7 @@ def pxt_rel(xtm1):
     """
     loc = array(xtm1, copy=1)
     loc = loc[newaxis, ...] if loc.ndim == 1 else loc
-    scale = [0.0001] * 2 + [0.001] * 2 + [10] + [0.1] * (len(loc.T) - 5)
+    scale = [0.01] * 2 + [0.001] * 2 + [1] + [0.001] * (len(loc.T) - 5)
     # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 2 + i]
@@ -170,7 +170,7 @@ pf = ParticleFilter(pxt_abs, pzt_abs)
 if use_rel:
     pf = ParticleFilter(pxt_rel, pzt_rel)
 Xt = zeros((len(t), M, 5 + len(obs.T[0].flatten())))
-Xt[-1] = [0, 0, 0, 0, 0] + list(obs.T[0].flatten())
+Xt[-1] = [5, 0, 0, 0, 0] + list(obs.T[0].flatten())
 seed(0)
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], obs.T[i].flatten())
