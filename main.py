@@ -15,10 +15,10 @@ import matplotlib.colors as mcolors
 
 # Constants
 dt = 0.01
-t1 = 200
+t1 = 1
 npts = 5
 q0 = (0, 0, 0)   # x,y,theta
-xi0 = (0, 0, 4)  # xdot,ydot,thetadot
+xi0 = (0, 0, 10)  # xdot,ydot,thetadot
 M = 100
 
 use_rel = 1
@@ -66,7 +66,7 @@ def pxt_rel(xtm1):
     """
     loc = array(xtm1, copy=1)
     loc = loc[newaxis, ...] if loc.ndim == 1 else loc
-    scale = [0.01] * 2 + [0.001] * 2 + [1] + [0.001] * (len(loc.T) - 5)
+    scale = [0.01] * 2 + [0.001] * 2 + [1] + [0.01] * (len(loc.T) - 5)
     # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 2 + i]
@@ -74,7 +74,7 @@ def pxt_rel(xtm1):
     for i in range(5, len(xtm1.T), 2):
         theta = arctan2(*loc[..., [i, i + 1]].T)
         r = sqrt(sum(loc[..., [i, i + 1]]**2, -1))
-        loc[..., i] += - dt * r * sin(theta) * loc[..., 4]
+        loc[..., i] += dt * r * sin(theta) * loc[..., 4]
         loc[..., i + 1] += dt * r * cos(theta) * loc[..., 4]
     # flow ydot
     loc[..., 3] -= dt
@@ -170,7 +170,7 @@ pf = ParticleFilter(pxt_abs, pzt_abs)
 if use_rel:
     pf = ParticleFilter(pxt_rel, pzt_rel)
 Xt = zeros((len(t), M, 5 + len(obs.T[0].flatten())))
-Xt[-1] = [5, 0, 0, 0, 0] + list(obs.T[0].flatten())
+Xt[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
 seed(0)
 for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], obs.T[i].flatten())
@@ -184,7 +184,7 @@ if use_rel:
     est[:, 5:] += est[:, [0, 1] * ((len(est.T) - 5) // 2)]
 
 tru = zeros_like(est)
-tru[:, :5] = out[:, [0, 1, 3, 4, 5]]
+tru[:, :5] = out[:, [0, 1, 3, 4, 5]]  # 2 is theta; skip
 tru[:, 5:] = obs.T.reshape(len(obs.T), prod([v for v in obs.T.shape[1:]]))
 
 # ===================================================================
@@ -232,6 +232,18 @@ for a in axm:
     a.grid(1)
 axm[-1].set_xlabel('$t$')
 axm[0].set_title(axm[0].get_figure().get_label())
+
+ax = newplot('rb params')
+c = list(mcolors.TABLEAU_COLORS.keys())
+for i in range(obs.shape[1]):
+    k = 5 + 2 * i
+    rtru = sqrt(sum((tru[..., [0, 1]] - tru[..., [k, k + 1]])**2, -1))
+    rout = sqrt(sum((out[..., [0, 1]] - obs[..., i, :].T)**2, -1))
+    rest = sqrt(sum((est[..., [0, 1]] - est[..., [k, k + 1]])**2, -1))
+    ax.plot(t, rout, '--', label=f'out {i}', c=c[i], lw=3)
+    ax.plot(t, rtru, '.-', label=f'true {i}', c=c[i], ms=2)
+    ax.plot(t, rest, 'x-', label=f'est {i}', c=c[i])
+ax.legend()
 
 ipychk()
 
