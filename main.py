@@ -15,13 +15,14 @@ import matplotlib.colors as mcolors
 
 # Constants
 dt = 0.01
-t1 = 1
+t1 = 10
 npts = 5
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 10)  # xdot,ydot,thetadot
 M = 100
 
 use_rel = 1
+scale = [0.01] * 2 + [0.001] * 2 + [5] + [0.01] * (2 * npts)
 
 # ===================================================================
 # Simulate Point Motion
@@ -66,7 +67,6 @@ def pxt_rel(xtm1):
     """
     loc = array(xtm1, copy=1)
     loc = loc[newaxis, ...] if loc.ndim == 1 else loc
-    scale = [0.01] * 2 + [0.001] * 2 + [1] + [0.01] * (len(loc.T) - 5)
     # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 2 + i]
@@ -240,8 +240,8 @@ for i in range(obs.shape[1]):
     rtru = sqrt(sum((tru[..., [0, 1]] - tru[..., [k, k + 1]])**2, -1))
     rout = sqrt(sum((out[..., [0, 1]] - obs[..., i, :].T)**2, -1))
     rest = sqrt(sum((est[..., [0, 1]] - est[..., [k, k + 1]])**2, -1))
-    ax.plot(t, rout, '--', label=f'out {i}', c=c[i], lw=3)
-    ax.plot(t, rtru, '.-', label=f'true {i}', c=c[i], ms=2)
+    ax.plot(t, rout, '--', c=c[i], lw=3)  # ,label=f'out {i})
+    ax.plot(t, rtru, '.-', c=c[i], ms=2)  # ,label=f'true {i}')
     ax.plot(t, rest, 'x-', label=f'est {i}', c=c[i])
 ax.legend()
 
