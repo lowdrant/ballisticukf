@@ -74,7 +74,7 @@ def pxt_rel(xtm1):
     for i in range(5, len(xtm1.T), 2):
         theta = arctan2(*loc[..., [i, i + 1]].T)
         r = sqrt(sum(loc[..., [i, i + 1]]**2, -1))
-        loc[..., i] += dt * r * sin(theta) * loc[..., 4]
+        loc[..., i] += - dt * r * sin(theta) * loc[..., 4]
         loc[..., i + 1] += dt * r * cos(theta) * loc[..., 4]
     # flow ydot
     loc[..., 3] -= dt
