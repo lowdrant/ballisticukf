@@ -66,7 +66,7 @@ def pxt(xtm1):
     scale = [0.01] * 2 + [1] * 2 + [2] + [0.001] * (len(loc.T) - 5)
     # flow CoM x,y
     for i in range(2):
-        loc[..., i] += dt * loc[..., 3 + i]
+        loc[..., i] += dt * loc[..., 2 + i]
     # flow marker x,y
     for i in range(5, len(xtm1.T), 2):
         d = loc[..., [i, i + 1]] - loc[..., [0, 1]]
