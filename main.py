@@ -160,11 +160,12 @@ def pzt_rel(zt, xt):
     xt = xt[newaxis, :] if xt.ndim == 1 else xt
     zt = zt[newaxis, :] if zt.ndim == 1 else zt
     err = 0
-    # '''
     # coordinate error
-    for i in range(0, (len(xt.T) - 5), 2):
-        d = zt[..., [i, i + 1]] - xt[..., [0, 1]] - xt[..., [5 + i, 5 + i + 1]]
-        err += sum(d**2, -1)
+    # '''
+    n = len(xt.T) - 5
+    dx = (zt[..., range(0, n, 2)]
+          - xt[..., range(5, n + 5, 2)] - xt[..., [0] * (n // 2)])
+    err += sum(dx**2, -1)
     # '''
     # pairwise distance error
     pairs = list(combinations(range(0, len(xt.T) - 5, 2), 2))
