@@ -17,9 +17,11 @@ import matplotlib.colors as mcolors
 dt = 0.01
 t1 = 1
 npts = 5
-q0 = (0.1, -0.1, 0)   # x,y,theta
-xi0 = (0, -0, 5)  # xdot,ydot,thetadot
+q0 = (0, 0, 0)   # x,y,theta
+xi0 = (0, 0, 5)  # xdot,ydot,thetadot
 M = 10000
+
+use_rel = 1
 
 # ===================================================================
 # Simulate Point Motion
@@ -50,8 +52,9 @@ for i in range(npts):
 # Priors
 
 
-def pxt(xtm1):
+def pxt_rel(xtm1):
     """generate probability cloud of current state given prev state
+    WARN: for relative marker positions
     INPUTS:
         xtm1 -- NxM -- N prior estimates for M states
     NOTES:
@@ -63,26 +66,51 @@ def pxt(xtm1):
     """
     loc = array(xtm1, copy=1)
     loc = loc[newaxis, ...] if loc.ndim == 1 else loc
-    scale = [0.01] * 2 + [1] * 2 + [2] + [0.001] * (len(loc.T) - 5)
+    scale = [0.01] * 2 + [0.1] * 2 + [10] + [0.1] * (len(loc.T) - 5)
     # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 2 + i]
     # flow marker x,y
     for i in range(5, len(xtm1.T), 2):
-        d = loc[..., [i, i + 1]] - loc[..., [0, 1]]
-        theta = arctan2(*d.T)
-        r = sqrt(sum(d**2, -1))
-        loc[..., i] += dt * loc[..., 2] + dt * r * sin(theta) * loc[..., 4]
-        loc[..., i + 1] += dt * loc[..., 3] + dt * r * cos(theta) * loc[..., 4]
+        theta = arctan2(*loc[..., [i, i + 1]].T)
+        r = sqrt(sum(loc[..., [i, i + 1]]**2, -1))
+        loc[..., i] += - dt * r * sin(theta) * loc[..., 4]
+        loc[..., i + 1] += dt * r * cos(theta) * loc[..., 4]
     # flow ydot
     loc[..., 3] -= dt
     return normal(loc=loc, scale=scale)
 
 
-def pzt(zt, xt):
+def pxt_abs(xtm1):
+    """generate probability cloud of current state given prev state
+    WARN: for absolute marker positions
+    SEE ALSO: pxt_rel
+    INPUTS:
+        xtm1 -- NxM -- N prior estimates for M states
+    OUTPUTS:
+        out -- NxM -- N current estimates for M states
+    NOTES:
+        - `pxt_rel` performs actual computations
+        - 
+    """
+    loc = array(xtm1, copy=1)
+    prev_vxvy = loc[..., [2, 3]].copy()
+    # xtm1[...,0]->ctrd_x ; xtm1[...,5]->mrkr0_x
+    # markers to rel distance
+    for i in range(5, len(loc.T)):
+        loc[..., i] -= loc[..., (i + 1) % 2]
+    out = pxt_rel(loc)
+    # markers to abs distance
+    for i in range(5, len(loc.T)):
+        k = (i + 1) % 2
+        out[..., i] += out[..., k] + dt * prev_vxvy[..., k]
+    return out
+
+
+def pzt_abs(zt, xt):
     """"Probability" that observations zt came from state xt. Implemented as a
     cost function of RBT prediction error of zt.
-
+    WARN: for absolue marker positions
     INPUTS:
         zt -- NxK -- N observations of K observables quantities
         xt -- NxM -- N estimates of M states
@@ -99,7 +127,34 @@ def pzt(zt, xt):
     xt, zt = asarray(xt), asarray(zt)
     xt = xt[newaxis, :] if xt.ndim == 1 else xt
     zt = zt[newaxis, :] if zt.ndim == 1 else zt
-    err = sum((zt - xt[..., 5:])**2, 1)
+    err = sum((zt - xt[..., 5:])**2, -1)
+    return 1 / (1 + 100 * err)
+
+
+def pzt_rel(zt, xt):
+    """"Probability" that observations zt came from state xt. Implemented as a
+    cost function of RBT prediction error of zt.
+    WARN: for relative marker positions
+    INPUTS:
+        zt -- NxK -- N observations of K observables quantities
+        xt -- NxM -- N estimates of M states
+
+    NOTES:
+        Since zt is a rigid point on body xt, augment xt with RBT to zt.
+        The particle filter renormalizes the probability of the particles,
+        so the output of this function doesn't need to cleanly integrate to 
+        1. This lets us return 1/(1+err), where `err` is the Euclidean
+        distance between the observed marker and its predicted location by the
+        RBTs. The form of the function makes low errors preferred while
+        avoiding division by 0/numeric instability.
+    """
+    xt, zt = asarray(xt), asarray(zt)
+    xt = xt[newaxis, :] if xt.ndim == 1 else xt
+    zt = zt[newaxis, :] if zt.ndim == 1 else zt
+    err = 0
+    for i in range(0, (len(xt.T) - 5), 2):
+        d = zt[..., [i, i + 1]] - xt[..., [0, 1]] - xt[..., [5 + i, 5 + i + 1]]
+        err += sum(d**2, -1)
     return 1 / (1 + 100 * err)
 
 
@@ -111,7 +166,9 @@ ctrd = obs[:-1].mean(1).T
 
 print('Starting particle filter...')
 tref = time()
-pf = ParticleFilter(pxt, pzt, dbg=1)
+pf = ParticleFilter(pxt_abs, pzt_abs)
+if use_rel:
+    pf = ParticleFilter(pxt_rel, pzt_rel)
 Xt = zeros((len(t), M, 5 + len(obs.T[0].flatten())))
 Xt[-1] = [0, 0, 0, 0, 0] + list(obs.T[0].flatten())
 seed(0)
@@ -123,6 +180,9 @@ print(f'Done! t={time()-tref:.2f}s')
 # Reconstruction
 
 est = mean(Xt, 1)
+if use_rel:
+    est[:, 5:] += est[:, [0, 1] * ((len(est.T) - 5) // 2)]
+
 tru = zeros_like(est)
 tru[:, :5] = out[:, [0, 1, 3, 4, 5]]
 tru[:, 5:] = obs.T.reshape(len(obs.T), prod([v for v in obs.T.shape[1:]]))
@@ -138,7 +198,6 @@ axp.plot(*est.T[:2], '.-', label='estimated CoM', c='tab:blue', **kwest)
 c = list(mcolors.TABLEAU_COLORS.keys())[2:]
 for i in range(0, obs.shape[1] + 2, 2):
     k = i // 2
-    print(i, k)
     axp.plot(*obs[:, k], c=c[k])  # ,label=f'mkr{k}')
     axp.plot(*est[:, [5 + i, 5 + i + 1]].T, '.', c=c[k], **kwest)
 axp.legend(loc='upper left')
@@ -163,10 +222,10 @@ axs[0].set_title(axs[0].get_figure().get_label())
 
 num = 'marker estimates'
 plt.figure(num).clf()
-_, axm = plt.subplots(nrows=obs.shape[1], sharex='all', num=num)
+_, axm = plt.subplots(nrows=obs.shape[0] * obs.shape[1], sharex='all', num=num)
 for i, ax in enumerate(axm):
-    ax.plot(t, tru[:, i], '.-')
-    ax.plot(t, est[:, i], '.-')
+    ax.plot(t, tru[:, 5 + i], '.-')
+    ax.plot(t, est[:, 5 + i], '.-')
     lbl = f'm{chr(ord("x") + i % 2)}{i // 2}'
     ax.set_ylabel(lbl)  # , rotation=0)
 for a in axm:
