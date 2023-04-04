@@ -6,8 +6,8 @@ Helper functions to keep main.py clean and readable
 
 import matplotlib.pyplot as plt
 from numpy import *
+from numpy.random import rand, seed
 from scipy.integrate import odeint
-from numpy.random import seed, rand
 
 
 def newplot(num=None):
