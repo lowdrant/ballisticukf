@@ -18,7 +18,7 @@ dt = 0.01
 t1 = 1
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
-xi0 = (0, -0, 7)  # xdot,ydot,thetadot
+xi0 = (0, -0, 5)  # xdot,ydot,thetadot
 M = 10000
 
 # ===================================================================
@@ -130,17 +130,17 @@ tru[:, 5:] = obs.T.reshape(len(obs.T), prod([v for v in obs.T.shape[1:]]))
 # ===================================================================
 # Plot
 
+kwest = {'ms': 2, 'lw': 0.5, 'alpha': 1}
 axp = newplot('parametric motion')
 axp.grid(0)
-axp.plot(gcom[0, -1], gcom[1, -1], label='CoM')
-axp.plot(*est.T[:2], '.', label='estimated CoM', c='tab:blue', ms=2)
+axp.plot(gcom[0, -1], gcom[1, -1], label='CoM', c='tab:blue')
+axp.plot(*est.T[:2], '.-', label='estimated CoM', c='tab:blue', **kwest)
 c = list(mcolors.TABLEAU_COLORS.keys())[2:]
 for i in range(0, obs.shape[1] + 2, 2):
     k = i // 2
     print(i, k)
     axp.plot(*obs[:, k], c=c[k])  # ,label=f'mkr{k}')
-    axp.plot(*est[:, [5 + i, 5 + i + 1]].T, '.',
-             c=c[k], ms=2)  # ,label=f'est{k}')
+    axp.plot(*est[:, [5 + i, 5 + i + 1]].T, '.', c=c[k], **kwest)
 axp.legend(loc='upper left')
 axp.set_xlabel('$x$')
 axp.set_ylabel('$y$')
