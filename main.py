@@ -17,8 +17,8 @@ dt = 0.01
 t1 = 1
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
-xi0 = (0.1, -0.5, 7)  # xdot,ydot,thetadot
-M = 10000
+xi0 = (0.1, -0.1, 7)  # xdot,ydot,thetadot
+M = 100
 
 # ===================================================================
 # Simulate Point Motion
@@ -70,7 +70,7 @@ def pxt(xtm1):
     loc[..., -2] += dt * loc[..., 2] + dt * r * sin(theta) * loc[..., -3]
     loc[..., -1] += dt * loc[..., 3] + dt * r * cos(theta) * loc[..., -3]
     loc[..., 3] -= dt
-    scale = [0.1] * len(loc.T)
+    scale = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
     return normal(loc=loc, scale=scale)
 
 
@@ -124,7 +124,7 @@ tru = zeros_like(est)
 tru[:, :5] = out[:, [0, 1, 3, 4, 5]]
 tru[:, [5, 6]] = out[:, [0, 1]] - ctrd
 
-est_ctrd = est[:, [0, 1]] + est[:, [-2, -1]]
+est_ctrd = est[:, [-2, -1]]
 
 # ===================================================================
 # Plot
