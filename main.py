@@ -11,14 +11,15 @@ from numpy.random import normal, rand, seed
 from time import time
 from filters import *
 from helpers import *
+import matplotlib.colors as mcolors
 
 # Constants
 dt = 0.01
 t1 = 1
 npts = 5
 q0 = (0.1, -0.1, 0)   # x,y,theta
-xi0 = (0.1, -0.1, 7)  # xdot,ydot,thetadot
-M = 100
+xi0 = (0, -0, 7)  # xdot,ydot,thetadot
+M = 1000
 
 # ===================================================================
 # Simulate Point Motion
@@ -61,16 +62,20 @@ def pxt(xtm1):
         observed velocity vo (vx+w*r*sina, vy+w*r*cosa)
     """
     loc = array(xtm1, copy=1)
-    if loc.ndim == 1:
-        loc = loc[newaxis, ...]
+    loc = loc[newaxis, ...] if loc.ndim == 1 else loc
+    scale = [0.1] * 5 + [0.1] * (len(loc.T) - 5)
+    # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 3 + i]
-    theta = arctan2(loc[..., -1] - loc[..., 1], loc[..., -2] - loc[..., 0])
-    r = sqrt(sum(loc[..., -2:]**2, 1))
-    loc[..., -2] += dt * loc[..., 2] + dt * r * sin(theta) * loc[..., -3]
-    loc[..., -1] += dt * loc[..., 3] + dt * r * cos(theta) * loc[..., -3]
+    # flow marker x,y
+    for i in range(5, len(xtm1.T), 2):
+        d = loc[..., [i, i + 1]] - loc[..., [0, 1]]
+        theta = arctan2(*d.T)
+        r = sqrt(sum(d**2, -1))
+        loc[..., i] += dt * loc[..., 2] + dt * r * sin(theta) * loc[..., 4]
+        loc[..., i + 1] += dt * loc[..., 3] + dt * r * cos(theta) * loc[..., 4]
+    # flow ydot
     loc[..., 3] -= dt
-    scale = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
     return normal(loc=loc, scale=scale)
 
 
@@ -92,28 +97,26 @@ def pzt(zt, xt):
         avoiding division by 0/numeric instability.
     """
     xt, zt = asarray(xt), asarray(zt)
-    if xt.ndim == 1:
-        xt = xt[newaxis, :]
-    if zt.ndim == 1:
-        zt = zt[newaxis, :]
-    err = sum((zt - xt[..., -2:])**2, 1)
+    xt = xt[newaxis, :] if xt.ndim == 1 else xt
+    zt = zt[newaxis, :] if zt.ndim == 1 else zt
+    err = sum((zt - xt[..., 5:])**2, 1)
     return 1 / (1 + 100 * err)
 
 
 # ===================================================================
 # Filtering
 
-obs = einsum('ij...,j->i...', gp, [0, 0, 1])
+obs = einsum('ij...,j->i...', gp, [0, 0, 1])[:-1]
 ctrd = obs[:-1].mean(1).T
 
 print('Starting particle filter...')
 tref = time()
 pf = ParticleFilter(pxt, pzt, dbg=1)
-Xt = zeros((len(t), M, 7))
-Xt[-1] = [*ctrd[0], 0, 0, 0, 0, 0]
+Xt = zeros((len(t), M, 5 + len(obs.T[0].flatten())))
+Xt[-1] = [0, 0, 0, 0, 0] + list(obs.T[0].flatten())
 seed(0)
 for i, _ in enumerate(t):
-    Xt[i] = pf(Xt[i - 1], ctrd[i])
+    Xt[i] = pf(Xt[i - 1], obs.T[i].flatten())
 print(f'Done! t={time()-tref:.2f}s')
 
 # ===================================================================
@@ -122,34 +125,37 @@ print(f'Done! t={time()-tref:.2f}s')
 est = mean(Xt, 1)
 tru = zeros_like(est)
 tru[:, :5] = out[:, [0, 1, 3, 4, 5]]
-tru[:, [5, 6]] = out[:, [0, 1]] - ctrd
-
-est_ctrd = est[:, [-2, -1]]
+tru[:, 5:] = obs.T.reshape(len(obs.T), prod([v for v in obs.T.shape[1:]]))
 
 # ===================================================================
 # Plot
 
-lbls = ['$x$', '$y$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$',
-        '$dx$', '$dy$']
-
 axp = newplot('parametric motion')
 axp.grid(0)
 axp.plot(gcom[0, -1], gcom[1, -1], label='CoM')
-axp.plot(*ctrd.T, label='marker')
-axp.plot(*est.T[:2], '.-', label='estimated CoM')
-axp.plot(*est_ctrd.T, '.-', label='estimated marker')
-axp.legend(loc='lower left')
+axp.plot(*est.T[:2], '.', label='estimated CoM', c='tab:blue', ms=2)
+c = list(mcolors.TABLEAU_COLORS.keys())[2:]
+for i in range(0, obs.shape[1] + 2, 2):
+    k = i // 2
+    print(i, k)
+    axp.plot(*obs[:, k], c=c[k])  # ,label=f'mkr{k}')
+    axp.plot(*est[:, [5 + i, 5 + i + 1]].T, '.',
+             c=c[k], ms=2)  # ,label=f'est{k}')
+axp.legend(loc='upper left')
 axp.set_xlabel('$x$')
 axp.set_ylabel('$y$')
 axp.set_aspect('equal')
 
+lbls = ['$x$', '$y$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$']
+
 num = 'filter output'
 plt.figure(num).clf()
-_, axf = plt.subplots(nrows=len(Xt.T), sharex='all', num=num)
+f, axf = plt.subplots(nrows=len(Xt.T), sharex='all', num=num)
 for i, ax in enumerate(axf):
     ax.plot(t, tru[:, i], '.-')
     ax.plot(t, est[:, i], '.-')
-    ax.set_ylabel(lbls[i])
+    lbl = lbls[i] if i < 5 else f'm{chr(ord("x") + (i - 5) % 2)}{(i - 5) // 2}'
+    ax.set_ylabel(lbl, rotation=0)
 for a in axf:
     a.grid()
 axf[-1].set_xlabel('$t$')
@@ -161,7 +167,7 @@ axpct.grid(0)
 axpct.plot(t, zeros_like(t), 'k--', lw=3)
 for i in range(len(Xt.T) - 2):
     pe = 100 * (tru[:, i] - est[:, i]) / tru[:, i]
-    axpct.plot(t, pe, '.-', label=lbls[i])
+    axpct.plot(t, pe, '.-')  # , label=lbls[i])
 axpct.legend(loc='upper right')
 axpct.set_xlabel('$t$')
 axpct.set_ylabel('percent error')
