@@ -63,7 +63,7 @@ def pxt(xtm1):
     """
     loc = array(xtm1, copy=1)
     loc = loc[newaxis, ...] if loc.ndim == 1 else loc
-    scale = [0.1] * 2 + [1] * 2 + [2] + [0.001] * (len(loc.T) - 5)
+    scale = [0.01] * 2 + [1] * 2 + [2] + [0.001] * (len(loc.T) - 5)
     # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 3 + i]
@@ -148,29 +148,31 @@ axp.set_aspect('equal')
 
 lbls = ['$x$', '$y$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$']
 
-num = 'filter output'
+num = 'state estimates'
 plt.figure(num).clf()
-f, axf = plt.subplots(nrows=len(Xt.T), sharex='all', num=num)
-for i, ax in enumerate(axf):
+_, axs = plt.subplots(nrows=5, sharex='all', num=num)
+for i, ax in enumerate(axs):
     ax.plot(t, tru[:, i], '.-')
     ax.plot(t, est[:, i], '.-')
     lbl = lbls[i] if i < 5 else f'm{chr(ord("x") + (i - 5) % 2)}{(i - 5) // 2}'
-    ax.set_ylabel(lbl, rotation=0)
-for a in axf:
-    a.grid()
-axf[-1].set_xlabel('$t$')
-axf[0].set_title(a.get_figure().get_label())
+    ax.set_ylabel(lbl)  # , rotation=0)
+for a in axs:
+    a.grid(1)
+axs[-1].set_xlabel('$t$')
+axs[0].set_title(axs[0].get_figure().get_label())
 
-num = 'pct err'
-axpct = newplot(num)
-axpct.grid(0)
-axpct.plot(t, zeros_like(t), 'k--', lw=3)
-for i in range(len(Xt.T) - 2):
-    pe = 100 * (tru[:, i] - est[:, i]) / tru[:, i]
-    axpct.plot(t, pe, '.-')  # , label=lbls[i])
-axpct.legend(loc='upper right')
-axpct.set_xlabel('$t$')
-axpct.set_ylabel('percent error')
+num = 'marker estimates'
+plt.figure(num).clf()
+_, axm = plt.subplots(nrows=obs.shape[1], sharex='all', num=num)
+for i, ax in enumerate(axm):
+    ax.plot(t, tru[:, i], '.-')
+    ax.plot(t, est[:, i], '.-')
+    lbl = f'm{chr(ord("x") + i % 2)}{i // 2}'
+    ax.set_ylabel(lbl)  # , rotation=0)
+for a in axm:
+    a.grid(1)
+axm[-1].set_xlabel('$t$')
+axm[0].set_title(axm[0].get_figure().get_label())
 
 ipychk()
 
