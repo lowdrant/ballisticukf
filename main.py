@@ -15,14 +15,14 @@ import matplotlib.colors as mcolors
 
 # Constants
 dt = 0.01
-t1 = 20
+t1 = 100
 npts = 5
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 0.5)  # xdot,ydot,thetadot
-M = 1000
+M = 100
 
 use_rel = 1
-scale = [0.01] * 2 + [0.001] * 2 + [1] + [0.000001] * (2 * npts)
+scale = [0.01] * 2 + [0.0001] * 2 + [0.1] + [0.000001] * (2 * npts)
 
 # ===================================================================
 # Simulate Point Motion
@@ -128,7 +128,7 @@ def pzt_abs(zt, xt):
     zt = zt[newaxis, :] if zt.ndim == 1 else zt
     err = sum((zt - xt[..., 5:])**2, -1)
     # pairwise distance error
-    '''
+    # '''
     pairs = list(combinations(range(0, len(xt.T) - 5, 2), 2))
     for i1, i2 in pairs:
         k1, k2 = i1 + 5, i2 + 5
