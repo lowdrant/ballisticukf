@@ -101,7 +101,8 @@ def pxt_abs(xtm1):
     out = pxt_rel(loc)
     # markers to abs distance
     for i in range(5, len(loc.T)):
-        out[..., i] += out[..., k] + dt * prev_v[..., (i + 1) % 2]
+        k = (i + 1) % 2
+        out[..., i] += out[..., k] + dt * prev_v[..., k]
     return out
 
 
