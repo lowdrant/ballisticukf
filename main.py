@@ -15,14 +15,14 @@ import matplotlib.colors as mcolors
 
 # Constants
 dt = 0.01
-t1 = 10
+t1 = 20
 npts = 5
 q0 = (0, 0, 0)   # x,y,theta
-xi0 = (0, 0, 10)  # xdot,ydot,thetadot
-M = 100
+xi0 = (0, 0, 0.5)  # xdot,ydot,thetadot
+M = 1000
 
 use_rel = 1
-scale = [0.01] * 2 + [0.001] * 2 + [5] + [0.01] * (2 * npts)
+scale = [0.01] * 2 + [0.001] * 2 + [1] + [0.000001] * (2 * npts)
 
 # ===================================================================
 # Simulate Point Motion
@@ -159,11 +159,11 @@ def pzt_rel(zt, xt):
     xt, zt = asarray(xt), asarray(zt)
     xt = xt[newaxis, :] if xt.ndim == 1 else xt
     zt = zt[newaxis, :] if zt.ndim == 1 else zt
-    err = 0
+    err = zeros(len(xt))
     # coordinate error
     # '''
     n = len(xt.T) - 5
-    d = zt - xt[..., [0, 1] * (n // 2)] - xt[..., range(5, n + 5)]
+    d = zt[...] - xt[..., [0, 1] * (n // 2)] - xt[..., 5:n + 5]
     err += sum(d**2, -1)
     # '''
     # pairwise distance error
@@ -262,7 +262,7 @@ for i in range(obs.shape[1]):
     ax.plot(t, rout, '--', c=c[i], lw=3)  # ,label=f'out {i})
     ax.plot(t, rtru, '.-', c=c[i], ms=2)  # ,label=f'true {i}')
     ax.plot(t, rest, 'x-', label=f'est {i}', c=c[i])
-ax.legend()
+ax.legend(loc='upper left')
 
 ipychk()
 
