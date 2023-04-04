@@ -72,10 +72,10 @@ def pxt_rel(xtm1):
         loc[..., i] += dt * loc[..., 2 + i]
     # flow marker x,y
     for i in range(5, len(xtm1.T), 2):
-        theta = arctan2(*loc[..., [i, i + 1]].T)
+        th = arctan2(*loc[..., [i, i + 1]].T).T
         r = sqrt(sum(loc[..., [i, i + 1]]**2, -1))
-        loc[..., i] += - dt * r * sin(theta) * loc[..., 4]
-        loc[..., i + 1] += dt * r * cos(theta) * loc[..., 4]
+        loc[..., i] += r * (cos(dt * loc[..., 4] + th) - cos(th))
+        loc[..., i + 1] += r * (sin(dt * loc[..., 4] + th) - sin(th))
     # flow ydot
     loc[..., 3] -= dt
     return normal(loc=loc, scale=scale)
