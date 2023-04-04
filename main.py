@@ -127,6 +127,15 @@ def pzt_abs(zt, xt):
     xt = xt[newaxis, :] if xt.ndim == 1 else xt
     zt = zt[newaxis, :] if zt.ndim == 1 else zt
     err = sum((zt - xt[..., 5:])**2, -1)
+    # pairwise distance error
+    '''
+    pairs = list(combinations(range(0, len(xt.T) - 5, 2), 2))
+    for i1, i2 in pairs:
+        k1, k2 = i1 + 5, i2 + 5
+        dz = (zt[..., [i1, i1 + 1]] - zt[..., [i2, i2 + 1]])**2
+        dx = (xt[..., [k1, k1 + 1]] - xt[..., [k2, k2 + 1]])**2
+        err += sum((dz - dx)**2, -1)
+    # '''
     return 1 / (1 + 100 * err)
 
 
@@ -151,9 +160,20 @@ def pzt_rel(zt, xt):
     xt = xt[newaxis, :] if xt.ndim == 1 else xt
     zt = zt[newaxis, :] if zt.ndim == 1 else zt
     err = 0
+    # '''
+    # coordinate error
     for i in range(0, (len(xt.T) - 5), 2):
         d = zt[..., [i, i + 1]] - xt[..., [0, 1]] - xt[..., [5 + i, 5 + i + 1]]
         err += sum(d**2, -1)
+    # '''
+    # pairwise distance error
+    pairs = list(combinations(range(0, len(xt.T) - 5, 2), 2))
+    for i1, i2 in pairs:
+        k1, k2 = i1 + 5, i2 + 5
+        dz = (zt[..., [i1, i1 + 1]] - zt[..., [i2, i2 + 1]])**2
+        dx = (xt[..., [k1, k1 + 1]] - xt[..., [k2, k2 + 1]])**2
+        err += sum((dz - dx)**2, -1)
+    # '''
     return 1 / (1 + 100 * err)
 
 
