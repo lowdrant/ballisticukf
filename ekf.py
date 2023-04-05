@@ -8,6 +8,7 @@ from time import time
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+from numba import jit, njit
 from numpy import *
 from numpy.random import normal, rand, seed
 
@@ -16,7 +17,7 @@ from helpers import *
 
 # Simulation
 dt = 0.01
-t1 = 3
+t1 = 100
 npts = 2
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 5)  # xdot,ydot,thetadot
@@ -38,6 +39,7 @@ Q = eye(M)
 # State Transitions
 
 
+# @njit
 def g(u, mu):
     """state transition function
     INPUTS:
@@ -50,6 +52,7 @@ def g(u, mu):
         Model: disk falling due to gravity with makers at some distance and
                angle from CoM.
     """
+    #mubar[...] = mu
     mubar = mu
     # CoM Motion
     mubar[..., 0] += mu[..., 2] * dt
@@ -60,12 +63,13 @@ def g(u, mu):
     M = (N - 5) // 2
     r = sqrt(mubar[..., 5::2]**2 + mubar[..., 6::2]**2)
     thview = mubar[..., 5:].reshape(mubar.shape[:-1] + (M, 2))
-    th = arctan2(*thview.T).T
+    th = arctan2(thview.T[0], thview.T[1]).T
     mubar[..., 5::2] += r * (cos(dt * mubar[..., 4] + th) - cos(th))
     mubar[..., 6::2] += r * (sin(dt * mubar[..., 4] + th) - sin(th))
     return mubar
 
 
+# @njit
 def h(mubar_t):
     """state observation function
     INPUTS:
@@ -115,4 +119,4 @@ print(f'Done! t={time()-tref:.2f}s')
 
 est = mu_t
 tru = reconstruct(est, out, obs)
-plots(t, tru, est)
+#plots(t, tru, est)
