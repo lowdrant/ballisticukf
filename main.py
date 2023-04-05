@@ -97,8 +97,8 @@ def pzt_rel(zt, xt):
 
 
 # ===================================================================
-
 # Filtering
+
 print('Starting particle filter...')
 tref = time()
 pf = ParticleFilter(pxt_rel, pzt_rel)
@@ -109,16 +109,10 @@ for i, _ in enumerate(t):
     Xt[i] = pf(Xt[i - 1], obs.T[i].flatten())
 print(f'Done! t={time()-tref:.2f}s')
 
-# Reconstruction
-est = mean(Xt, 1)
-tru = zeros_like(est)
-tru[:, :5] = out[:, [0, 1, 3, 4, 5]]  # 2 is theta; skip
-tru[:, 5:] = obs.T.reshape(len(obs.T), prod([v for v in obs.T.shape[1:]]))
-tru[:, 5::2] -= tru[:, [0]]
-tru[:, 6::2] -= tru[:, [1]]
-
 # ===================================================================
-# Plot
+# Validation
 
+est = mean(Xt, 1)
+tru = reconstruct(est,out,obs)
 plots(t, tru, est)
 
