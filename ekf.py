@@ -27,6 +27,11 @@ N, M = len(t), 5 + 2 * npts
 
 scale = [0.01] * 2 + [0.0001] * 2 + [0.1] + [0.000001] * (2 * npts)
 
+# Model Uncertainty Covariance
+R = eye(M)
+# Measurement Noise Covariance
+Q = eye(M)
+
 # ===================================================================
 # State Transitions
 
@@ -86,14 +91,15 @@ def G(xtm1, out=None):
             %28x%5E2%2By%5E2%29+*+y+%2F+%28sqrt%28x%5E2%2By%5E2%29%29
     """
     xtm1 = asarray(xtm1)
-    r, c = range(5, len(xtm1.T), 2), range(6, len(xtm1.T), 2)
+    n_mx, n_my = range(5, len(xtm1.T), 2), range(6, len(xtm1.T), 2)
     if out is None:
         out = zeros(xtm1.shape + (len(xtm1.T),), dtype=float)
     out[...] = 0.  # force to 0 float
     out[..., 0, 2] = dt  # x on vx
     out[..., 1, 3] = dt  # y on vy
-    out[..., r, c] = 1  # my marker dependence
-    out[..., r, 4] = 1  # w marker dependence
+    out[..., n_mx, n_my] = 1  # my marker dependence
+    out[..., n_my, n_mz] = 1  # mx marker dependence
+    out[..., 5:, 4] = 1  # theta_dot marker dependence
     return out
 
 
@@ -106,12 +112,11 @@ def H(mubar_t, out=None):
         Ht -- ...(M-5)xM -- jacoban of h at mubar_t
     """
     mubar_t = asarray(mubar_t)
+    M = len(mubar_t.T)
     if out is None:
-        out = zeros(mubar_t.shape + (len(mubar_t.T),), dtype=float)
+        out = zeros(mubar_t.shape[-2] + (M - 5, M), dtype=float)
     out[...] = 0.
-    n = len(mubar_t.T)
-    r, c = range(5, n, 2), range(6, n, 2)
-    out[..., r, c] = 1.
+    out[..., 5:] = eye(M - 5)
     return out
 
 

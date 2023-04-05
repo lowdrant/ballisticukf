@@ -1,4 +1,4 @@
-__all__ = ['ParticleFilter']
+__all__ = ['ParticleFilter', 'ExtendedKalmanFilter']
 """
 Implement filters for evaluation in main.py
 """
@@ -86,15 +86,21 @@ def arrmatmul(A, B, out=None):
 
 
 class ExtendedKalmanFilter():
-    """unforced EKF implementation as described in Thrun Chp3 p59. """
+    """unforced EKF implementation as described in Thrun Chp3 p59.
+
+    TODO: allow callable or matrices for G,H,R,Q
+    TODO: pre-allocate matrices where possible
+    """
 
     def __init__(self, g, h, G, H, R, Q, dbg=False):
-        assert callable(g)
-        assert callable(h)
-        assert callable(H)
-        assert callable(G)
-        for k in ('g', 'h', 'G', 'R', 'H', 'Q'):
-            setattr(self, k, eval(k))
+        for k in ('g', 'h', 'G', 'H'):
+            fun = eval(k)
+            assert callable(k), f'{k} must be callable'
+            setattr(self, k, fun)
+        self.R, self.Q = asarray(R), asarray(Q)
+        self.M, self.K = len(self.R), len(self.Q)
+
+        # debuggers
         self.dbg = dbg
         self.Klog, self.Glog, self.Hlog = [], [], []
 
@@ -142,3 +148,4 @@ class ExtendedKalmanFilter():
         I[:] = eye(len(KH.T))
         ImKH = I - KH  # TODO: check vectorization
         return arrmatmul(ImKH, sigmabar_t)
+
