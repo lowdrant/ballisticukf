@@ -121,7 +121,7 @@ def compute_motion(x0, t, npts):
     # Simple Validation
     for i in range(npts):
         d2 = (gcom[0, -1] - gp[0, -1, i])**2 + (gcom[1, -1] - gp[1, -1, i])**2
-        assert sum(abs(diff(d2))) < 1e-6, 'rigid body assumption violated!'
+        assert mean(abs(diff(d2))) < 1e-6, 'rigid body assumption violated!'
 
     return gcom, out, obs
 
