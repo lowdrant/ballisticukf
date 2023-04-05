@@ -1,31 +1,17 @@
-__all__ = ['r2d', 'newplot', 'ipychk', 'gen_transform',
-           'sim', 'SE2', 'rms', 'gen_markers', 'compute_motion']
 """
 Helper functions to keep main.py clean and readable
 """
-
 import matplotlib.pyplot as plt
+from matplotlib.colors import TABLEAU_COLORS as TC
 from numpy import *
 from numpy.random import rand, seed
 from scipy.integrate import odeint
+__all__ = ['r2d', 'newplot', 'ipychk', 'gen_transform', 'sim', 'SE2', 'rms',
+           'gen_markers', 'compute_motion', 'plots']
+__all__ += ['plot_' + v for v in ('parametric', 'state', 'est', 'obs', 'rb')]
 
-
-def newplot(num=None):
-    """generate fresh figure with axis grid.
-    INPUTS:
-        num -- (optional) num argument for `plt.figure`
-    OUTPUTS:
-        ax -- axis for plotting
-    """
-    if num is None:
-        f = plt.figure()
-    else:
-        f = plt.figure(num)
-    f.clf()
-    ax = f.add_subplot(111)
-    ax.grid()
-    ax.set_title(str(num))
-    return ax
+# ============================================================================
+# Rigid Body Funcs
 
 
 def r2d(t):
@@ -36,16 +22,6 @@ def r2d(t):
         R -- 2x2xN... rotation matrices
     """
     return array([[cos(t), -sin(t)], [sin(t), cos(t)]])
-
-
-def ipychk():
-    """If ipython session, turn on interactive plots; else `plt.show()`."""
-    try:
-        get_ipython()
-        plt.ion()
-    except NameError:
-        plt.ioff()
-        plt.show()
 
 
 def gen_transform(r, th):
@@ -61,6 +37,16 @@ def gen_transform(r, th):
     out = c_[R, xy]
     out = r_[out, [[0, 0, 1]]]
     return out
+
+
+def gen_markers(npts):
+    seed(0)
+    tf = []
+    for i in range(npts):
+        r = rand()
+        th = 2 * pi * rand()
+        tf.append(gen_transform(r, th))
+    return asarray(tf)
 
 
 def SE2(x, y, th):
@@ -81,6 +67,9 @@ def SE2(x, y, th):
     out[1, 2] = y
     out[2, 2] = 1
     return out
+
+# ============================================================================
+# Dynamics Funcs
 
 
 def _dynamics(x, t):
@@ -119,28 +108,6 @@ def sim(x0, t, return_state=0):
     return gcom
 
 
-def rms(x, axis=None):
-    """Compute RMS of x
-    INPUTS:
-        x -- Nx... array of data
-        axis -- (optional) axis along which to compute mean
-    OUTPUTS:
-        rms -- sqrt((x**2).mean(axis))
-    """
-    x = asarray(x)
-    return sqrt((x**2).mean(axis=axis))
-
-
-def gen_markers(npts):
-    seed(0)
-    tf = []
-    for i in range(npts):
-        r = rand()
-        th = 2 * pi * rand()
-        tf.append(gen_transform(r, th))
-    return asarray(tf)
-
-
 def compute_motion(x0, t, npts):
     # Body Motion
     gcom, out = sim(x0, t, return_state=1)
@@ -156,3 +123,150 @@ def compute_motion(x0, t, npts):
         assert sum(abs(diff(d2))) < 1e-6, 'rigid body assumption violated!'
 
     return gcom, out, obs
+
+# ============================================================================
+# Plotting
+
+
+def newplot(num=None):
+    """generate fresh figure with axis grid.
+    INPUTS:
+        num -- (optional) num argument for `plt.figure`
+    OUTPUTS:
+        ax -- axis for plotting
+    """
+    if num is None:
+        f = plt.figure()
+    else:
+        f = plt.figure(num)
+    f.clf()
+    ax = f.add_subplot(111)
+    ax.grid()
+    ax.set_title(str(num))
+    return ax
+
+
+def ipychk():
+    """If ipython session, turn on interactive plots; else `plt.show()`."""
+    try:
+        get_ipython()
+        plt.ion()
+    except NameError:
+        plt.ioff()
+        plt.show()
+
+
+def plot_parametric(t, tru, est, kwest, c, lbls):
+    axp = newplot('parametric motion')
+    axp.grid(0)
+    axp.plot(*tru[:, [0, 1]].T, label='CoM', c='tab:blue')
+    axp.plot(*est.T[:2], '.-', label='estimated CoM', c='tab:blue', **kwest)
+    c = c[1:]
+    for i in range(0, est.shape[1] - 5, 2):
+        j, k = 5 + i, i // 2
+        tt = tru[:, [j, j + 1]] + tru[:, [0, 1]]
+        ee = est[:, [j, j + 1]] + est[:, [0, 1]]
+        axp.plot(*tt.T, c=c[k])  # ,label=f'mkr{k}')
+        axp.plot(*ee.T, '.', c=c[k], **kwest)
+    axp.legend(loc='upper left')
+    axp.set_xlabel('$x$')
+    axp.set_ylabel('$y$')
+    axp.set_aspect('equal')
+    return axp
+
+
+def plot_state(t, tru, est, kwest, c, lbls):
+    num = 'state estimates'
+    plt.figure(num).clf()
+    _, axs = plt.subplots(nrows=5, sharex='all', num=num)
+    for i, ax in enumerate(axs):
+        ax.plot(t, tru[:, i], '.-')
+        ax.plot(t, est[:, i], '.-')
+        lbl = lbls[i] if i < 5 else f'm{chr(ord("x") + (i - 5) % 2)}{(i - 5) // 2}'
+        ax.set_ylabel(lbl)  # , rotation=0)
+    for a in axs:
+        a.grid(1)
+    axs[-1].set_xlabel('$t$')
+    axs[0].set_title(axs[0].get_figure().get_label())
+    return axs
+
+
+def plot_obs(t, tru, est, kwest, c, lbls):
+    num = 'marker position'
+    plt.figure(num).clf()
+    _, axm = plt.subplots(nrows=(tru.shape[1] - 5), sharex='all', num=num)
+    for i, ax in enumerate(axm):
+        k = 5 + i
+        tt = tru[:, k] + tru[:, i % 2]
+        ee = est[:, k] + est[:, i % 2]
+        ax.plot(t, tt, '.-')
+        ax.plot(t, ee, '.-')
+        lbl = f'm{chr(ord("x") + i % 2)}{i // 2}'
+        ax.set_ylabel(lbl)  # , rotation=0)
+    for a in axm:
+        a.grid(1)
+    axm[-1].set_xlabel('$t$')
+    axm[0].set_title(axm[0].get_figure().get_label())
+    return axm
+
+
+def plot_est(t, tru, est, kwest, c, lbls):
+    num = 'marker delta'
+    plt.figure(num).clf()
+    _, axe = plt.subplots(nrows=tru.shape[1] - 5, sharex='all', num=num)
+    for i, ax in enumerate(axe):
+        j = 5 + i
+        ax.plot(t, tru[:, j], '.-')
+        ax.plot(t, est[:, j], '.-')
+        lbl = f'm{chr(ord("x") + i % 2)}{i // 2}'
+        ax.set_ylabel(lbl)  # , rotation=0)
+    for a in axe:
+        a.grid(1)
+    axe[-1].set_xlabel('$t$')
+    axe[0].set_title(axe[0].get_figure().get_label())
+    return axe
+
+
+def plot_rb(t, tru, est, kwest, c, lbls):
+    ax = newplot('rb params')
+    for i in range((est.shape[1] - 5) // 2):
+        k = 5 + 2 * i
+        rtru = sqrt(sum((tru[..., [k, k + 1]])**2, -1))
+#        rout = sqrt(sum((out[..., [0, 1]] - est[..., i, :].T)**2, -1))
+        rest = sqrt(sum((est[..., [k, k + 1]])**2, -1))
+ #       ax.plot(t, rout, '--', c=c[i], lw=3)  # ,label=f'out {i})
+        ax.plot(t, rtru, '.-', c=c[i], ms=2)  # ,label=f'true {i}')
+        ax.plot(t, rest, 'x-', label=f'$\\hat{{r}}_{i}$', c=c[i])
+    ax.legend(loc='upper left')
+    return ax
+
+
+def plots(t, tru, est):
+    """Group plotting function"""
+    kwest = {'ms': 2, 'lw': 0.5, 'alpha': 1}
+    lbls = ['$x$', '$y$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$']
+    c = list(TC.keys())
+    args = [t, tru, est, kwest, c, lbls]
+
+    axp = plot_parametric(*args)
+    axs = plot_state(*args)
+    axo = plot_obs(*args)
+    axe = plot_est(*args)
+    axr = plot_rb(*args)
+    ipychk()
+    return axp, axs, axo, axe, axr
+
+# ============================================================================
+# Numerics
+
+
+def rms(x, axis=None):
+    """Compute RMS of x
+    INPUTS:
+        x -- Nx... array of data
+        axis -- (optional) axis along which to compute mean
+    OUTPUTS:
+        rms -- sqrt((x**2).mean(axis))
+    """
+    x = asarray(x)
+    return sqrt((x**2).mean(axis=axis))
