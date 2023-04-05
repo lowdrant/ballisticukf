@@ -275,8 +275,9 @@ def rms(x, axis=None):
 
 def reconstruct(est, out, obs):
     tru = zeros_like(est)
-    tru[:, :5] = out[:, [0, 1, 3, 4, 5]]  # 2 is theta; skip
-    tru[:, 5:] = obs.T.reshape(len(obs.T), prod([v for v in obs.T.shape[1:]]))
+    tru[:, :5] = out[:, [0, 1, 3, 4, 5]].copy()  # 2 is theta; skip
+    tru[:, 5:] = obs.T.reshape(len(obs.T),
+                               prod([v for v in obs.T.shape[1:]])).copy()
     tru[:, 5::2] -= tru[:, [0]]
     tru[:, 6::2] -= tru[:, [1]]
     return tru

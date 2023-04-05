@@ -3,7 +3,7 @@ __all__ = ['ParticleFilter', 'ExtendedKalmanFilter']
 Implement filters for evaluation in main.py
 """
 
-from numpy import asarray, einsum, eye, newaxis, zeros, zeros_like
+from numpy import asarray, eye, matmul, newaxis, zeros, zeros_like
 from numpy.linalg import pinv
 from numpy.random import choice
 
@@ -70,80 +70,134 @@ class ParticleFilter():
         return Xbart[ii, :-1]
 
 
-def arrmatmul(A, B, out=None):
-    """Matrix multiply 2 arrays of matrices.
-    INPUTS:
-        A -- ...NxM -- array of NxM matrices
-        B -- ...MxK -- array of MxK matrices
-    OUTPUTS:
-        ...NxK -- array of multiplied matrices
-    """
-    A, B = asarray(A), asarray(B)
-    if out is None:
-        out = zeros((A.shape[:-1] + (len(B.T),)))
-    out = asarray(out)
-    return einsum('...ij,...jk->...ik', A, B, out=out)
-
-
 class ExtendedKalmanFilter():
-    """unforced EKF implementation as described in Thrun Chp3 p59.
+    """EKF implementation as described in Thrun Chp3 p59.
 
-    TODO: __call__ factory in init 
-        - allow callable or matrices for G,H,R,Q
     TODO: pre-allocate matrices where possible
-    TODO: remove vectorization since only 1 "particle" per call
+    TODO: debuggers
+    TODO: API for R,Q matrices
     """
 
-    def __init__(self, g, h, G, H, R, Q, dbg=False):
-        for k in ('g', 'h', 'G', 'H'):
-            fun = eval(k)
-            assert callable(fun), f'{k} must be callable'
-            setattr(self, k, fun)
-        self.R, self.Q = asarray(R), asarray(Q)
-        self.N, self.K = len(self.R), len(self.Q)
+    def __init__(self, g, h, G, H, R, Q, N=None, M=None, dbg=False):
+        self.g, self.h = g, h
+        assert callable(self.g), 'g must be callable'
+        assert callable(self.h), 'h must be callable'
+        self.G, self.H, self.R, self.Q = G, H, R, Q
+        #self._filterfun = self._call_factory()
+        self._filterfun = self._filter_static
 
-        # debuggers
-        self.dbg = dbg
-        self.Klog, self.Glog, self.Hlog = [], [], []
-        # if dbg:
-        #    self.__call__ = self._call_dbg
-        #self.__call__ = self._call_base
+    # ========================================================================
+    # Call Setup
 
-    def __call__(self, mu_t1, sigma_t1, z_t):
-        """(vectorized) run EKF
+    '''
+    def _determine_prealloc(self):
+        nonecall, anycall = True, False
+        for k in ('G', 'H', 'R', 'Q'):
+            attr = getattr(self, k)
+            if not callable(attr):
+                setattr(self, k, asarray(attr))
+            else:
+                anycall = True
+                nonecall = False
+        assert anycall ^ nonecall, 'issue determining callable matrices'
+        allcall = anycall and not nonecall
+
+
+    def _call_factory(self, can_prealloc):
+        """Go over EKF matrix params and determine if callable or not
+        and adjust class params accordingly
+        """
+        if nonecall:
+            return self._filter_static
+    '''
+
+    def __call__(self, mu, sigma, u, z, mu_t=None, sigma_t=None):
+        """run EKF
         INPUTS:
             TODO
         OUTPUTS:
             TODO
         """
-        mu_t1, sigma_t1, z_t = asarray(mu_t1), asarray(sigma_t1), asarray(z_t)
-        mubar_t = self.g(mu_t1)
-        H_t, G_t = self.H(mubar_t), self.G(mu_t1)
-        sigmabar_t = self._calc_sigmabart(G_t, mu_t1, sigma_t1, self.R)
-        K_t = self._calc_Kt(sigmabar_t, H_t, self.Q)
-        sigma_t = self._calc_sigmat(K_t, H_t, sigmabar_t)
-        mu_t = (z_t - self.h(mubar_t).squeeze()).T
-        mu_t = K_t @ mu_t
-        mu_t += mubar_t.T
+        if mu_t is None:
+            mu_t = zeros_like(mu)
+        if sigma_t is None:
+            sigma_t = zeros_like(sigma)
+        return self._filterfun(mu, sigma, u, z, mu_t, sigma_t)
+
+    # ========================================================================
+    # Basic Filter Implementations
+
+    def _matmuls(self, sigma, z, R, Q, H, G, mubar, mu_t, sigma_t):
+        """Generic EKF matmuls"""
+        N = mubar.size
+        sigmabar = G @ sigma @ G.T + R
+        K = sigmabar @ H.T @ pinv(H@sigmabar@H.T + Q)
+        mu_t = mubar + K @ (z - self.h(mubar))
+        sigma_t = (eye(N) - K@H)@sigmabar
         return mu_t, sigma_t
 
-    def _calc_sigmabart(self, G_t, mu_t1, sigma_t1, R_t, out=None):
-        out = G_t @ sigma_t1 @ G_t.T + R_t
-        return out
+    def _filter_base(self, mu, sigma, u, z, mu_t, sigma_t):
+        """Generic EKF implementation"""
+        mubar = self.g(u, mu)
+        H, G = self.H(mubar), self.G(u, mu)
+        R = self.R(mu, sigma, u, z)
+        Q = self.Q(mu, sigma, u, z)
+        return self._matmuls(sigma, z, R, Q, H, G, mubar, mu_t, sigma_t)
 
-    def _calc_Kt(self, sigmabar_t, H_t, Q_t, out=None):
-        out = sigmabar_t @ H_t.T @ pinv(H_t @ sigmabar_t @ H_t.T + Q_t)
-        return out
+    def _filter_static(self, mu, sigma, u, z, mu_t, sigma_t):
+        """EKF with constant matrices"""
+        return self._matmuls(sigma, z, self.R, self.Q, self.H,
+                             self.G, self.g(u, mu), mu_t, sigma_t)
 
-    def _calc_sigmat(self, K_t, H_t, sigmabar_t):
-        KH = K_t @ H_t
-        I = zeros_like(KH)
-        I[:] = eye(len(KH.T))
-        ImKH = I - KH
-        return ImKH @ sigmabar_t
+    # ========================================================================
+    # Memory Pre-Alloc Methods
 
     def _prealloc(self):
         """allocate intermediate arrays once for efficiency/njit
         compatability"""
-        raise NotImplementedError
-        self.I = eye(self.K)
+        self.I = eye(self.N)
+        self.mubar = zeros(self.N)
+        self.sigmabar = zeros((self.N, self.N))
+        self.K = zeros((self.N, self.M))
+        self.Rt = zeros_like(self.sigmabar)
+        self.Qt = zeros_like()
+
+    def _matmuls_prealloc(self, sigma, z, R, Q, H, G, mubar, mu_t, sigma_t):
+        """EKF matrix muls optimized for no memory allocation
+
+        Requires preallocation of matrices
+            - sigmabar, K, I
+        """
+        # Sigma bar
+        # ---------
+        matmul(G, sigma, out=self.sigmabar)
+        matmul(self.sigmabar, G.T, out=self.sigmabar)
+        self.sigmabar += R
+        # Kalman Gain
+        # -----------
+        matmul(H, self.sigmabar, out=self.K)
+        matmul(self.K, H.T, out=self.K)
+        self.K += Q
+        self.K[...] = pinv(self.K)
+        matmul(H.T, self.K, out=self.K)
+        matmul(self.sigmabar, self.K, out=self.K)
+        # mu
+        # --
+        self.h(mubar, out=mu_t)
+        mu_t *= -1
+        mu_t += z
+        mu_t[...] = z.copy()
+        matmul(self.K, mu_t, out=mu_t)
+        mu_t += mubar
+        # sigma
+        # -----
+        matmul(-self.K, H, out=sigma_t)
+        sigma_t += self.I
+        matmul(sigma_t, self.sigmabar, out=sigma_t)
+
+        return mu_t, sigma_t
+
+    def _filter_prealloc(self, mu, sigma, u, z, mu_t, sigma_t):
+        self.g(u, mu, out=self.mubar)
+        return self._matmuls_prealloc(sigma, z, self.R, self.Q, self.H,
+                                      self.G, self.g(u, mu), mu_t, sigma_t)
