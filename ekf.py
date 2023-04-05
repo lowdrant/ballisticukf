@@ -137,69 +137,10 @@ for i, _ in enumerate(t):
     mu_t[i], sigma_t[i] = ekf(mu_t[i - 1], sigma_t[i - 1], obs.T[i].flatten())
 print(f'Done! t={time()-tref:.2f}s')
 
-# Reconstruction
-est = mu_t.copy()
-est[:, 5:] += est[:, [0, 1] * ((len(est.T) - 5) // 2)]
-tru = zeros_like(est)
-tru[:, :5] = out[:, [0, 1, 3, 4, 5]]  # 2 is theta; skip
-tru[:, 5:] = obs.T.reshape(len(obs.T), prod([v for v in obs.T.shape[1:]]))
-
 # ===================================================================
-# Plot
+# Validation
 
-kwest = {'ms': 2, 'lw': 0.5, 'alpha': 1}
-axp = newplot('parametric motion')
-axp.grid(0)
-axp.plot(gcom[0, -1], gcom[1, -1], label='CoM', c='tab:blue')
-axp.plot(*est.T[:2], '.-', label='estimated CoM', c='tab:blue', **kwest)
-c = list(mcolors.TABLEAU_COLORS.keys())[2:]
-for i in range(0, obs.shape[1] + 2, 2):
-    k = i // 2
-    axp.plot(*obs[:, k], c=c[k])  # ,label=f'mkr{k}')
-    axp.plot(*est[:, [5 + i, 5 + i + 1]].T, '.', c=c[k], **kwest)
-axp.legend(loc='upper left')
-axp.set_xlabel('$x$')
-axp.set_ylabel('$y$')
-axp.set_aspect('equal')
+est = mu_t
+tru = reconstruct(est, out, obs)
+plots(t, tru, est)
 
-lbls = ['$x$', '$y$', '$\\dot{x}$', '$\\dot{y}$', '$\\dot{\\theta}$']
-
-num = 'state estimates'
-plt.figure(num).clf()
-_, axs = plt.subplots(nrows=5, sharex='all', num=num)
-for i, ax in enumerate(axs):
-    ax.plot(t, tru[:, i], '.-')
-    ax.plot(t, est[:, i], '.-')
-    lbl = lbls[i] if i < 5 else f'm{chr(ord("x") + (i - 5) % 2)}{(i - 5) // 2}'
-    ax.set_ylabel(lbl)  # , rotation=0)
-for a in axs:
-    a.grid(1)
-axs[-1].set_xlabel('$t$')
-axs[0].set_title(axs[0].get_figure().get_label())
-
-num = 'marker estimates'
-plt.figure(num).clf()
-_, axm = plt.subplots(nrows=obs.shape[0] * obs.shape[1], sharex='all', num=num)
-for i, ax in enumerate(axm):
-    ax.plot(t, tru[:, 5 + i], '.-')
-    ax.plot(t, est[:, 5 + i], '.-')
-    lbl = f'm{chr(ord("x") + i % 2)}{i // 2}'
-    ax.set_ylabel(lbl)  # , rotation=0)
-for a in axm:
-    a.grid(1)
-axm[-1].set_xlabel('$t$')
-axm[0].set_title(axm[0].get_figure().get_label())
-
-ax = newplot('rb params')
-c = list(mcolors.TABLEAU_COLORS.keys())
-for i in range(obs.shape[1]):
-    k = 5 + 2 * i
-    rtru = sqrt(sum((tru[..., [0, 1]] - tru[..., [k, k + 1]])**2, -1))
-    rout = sqrt(sum((out[..., [0, 1]] - obs[..., i, :].T)**2, -1))
-    rest = sqrt(sum((est[..., [0, 1]] - est[..., [k, k + 1]])**2, -1))
-    ax.plot(t, rout, '--', c=c[i], lw=3)  # ,label=f'out {i})
-    ax.plot(t, rtru, '.-', c=c[i], ms=2)  # ,label=f'true {i}')
-    ax.plot(t, rest, 'x-', label=f'est {i}', c=c[i])
-ax.legend(loc='upper left')
-
-ipychk()
