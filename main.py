@@ -113,6 +113,5 @@ print(f'Done! t={time()-tref:.2f}s')
 # Validation
 
 est = mean(Xt, 1)
-tru = reconstruct(est,out,obs)
+tru = reconstruct(est, out, obs)
 plots(t, tru, est)
-

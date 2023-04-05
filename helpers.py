@@ -6,6 +6,7 @@ from matplotlib.colors import TABLEAU_COLORS as TC
 from numpy import *
 from numpy.random import rand, seed
 from scipy.integrate import odeint
+
 __all__ = ['r2d', 'newplot', 'ipychk', 'gen_transform', 'sim', 'SE2', 'rms',
            'gen_markers', 'compute_motion', 'plots', 'reconstruct']
 __all__ += ['plot_' + v for v in ('parametric', 'state', 'est', 'obs', 'rb')]
@@ -270,7 +271,8 @@ def rms(x, axis=None):
     """
     x = asarray(x)
     return sqrt((x**2).mean(axis=axis))
-    
+
+
 def reconstruct(est, out, obs):
     tru = zeros_like(est)
     tru[:, :5] = out[:, [0, 1, 3, 4, 5]]  # 2 is theta; skip
@@ -278,4 +280,3 @@ def reconstruct(est, out, obs):
     tru[:, 5::2] -= tru[:, [0]]
     tru[:, 6::2] -= tru[:, [1]]
     return tru
-
