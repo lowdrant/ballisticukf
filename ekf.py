@@ -102,7 +102,8 @@ def G(xtm1, out=None):
     out[..., 1, 3] = dt  # y on vy
     out[..., n_mx, n_my] = 1  # my marker dependence
     out[..., n_my, n_mx] = 1  # mx marker dependence
-    out[..., 5:, 4] = 1  # theta_dot marker dependence
+    out[..., 5::2, 4] = -1  # theta_dot marker dependence
+    out[..., 6::2, 4] = 1
     return out
 
 
