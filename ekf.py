@@ -14,24 +14,25 @@ from numpy.random import normal, rand, seed
 from filters import *
 from helpers import *
 
-# Constants
+# Simulation
 dt = 0.01
-t1 = 100
-npts = 5
+t1 = 3
+npts = 2
 q0 = (0, 0, 0)   # x,y,theta
-xi0 = (0, 0, 0.5)  # xdot,ydot,thetadot
+xi0 = (0, 0, 5)  # xdot,ydot,thetadot
 t = arange(0, t1, dt)
 gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
 
+# Matrices
 N, K = len(t), 2 * npts
 M = K + 5
-
-scale = [0.01] * 2 + [0.0001] * 2 + [0.1] + [0.000001] * (2 * npts)
-
-# Model Uncertainty Covariance
+# model uncertainty
 R = eye(M)
-# Measurement Noise Covariance
-Q = eye(K)
+R[5:, 4] = 1  # marker delta depends on theta_dot
+R[0, 2] = 1  # x depends on vx
+R[1, 3] = 1  # y depends on vy
+# measurement uncertainty
+Q = ones((K, K))
 
 # ===================================================================
 # State Transitions
@@ -85,7 +86,7 @@ def G(xtm1, out=None):
         xtm1 -- ...NxM -- N estimates of M states at time t-1.
                           Format: (x,y,vx,vy,w,mx0,my0,...,mxN,myN)
     OUTPUTS:
-       Gt -- ...MxM -- jacoban of g at xtm1 
+       Gt -- ...MxM -- jacoban of g at xtm1
 
     NOTES:
         Lest I forget:
@@ -130,9 +131,8 @@ def H(mubar_t, out=None):
 print('Starting EKF...')
 tref = time()
 ekf = ExtendedKalmanFilter(g, h, G, H, R, Q)
-mu_t = zeros((N, M))
+mu_t, sigma_t = zeros((N, M)), zeros((N, M, M))
 mu_t[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
-sigma_t = zeros((len(t), M, M))  # TODO: initialize better
 seed(0)
 for i, _ in enumerate(t):
     mu_t[i], sigma_t[i] = ekf(mu_t[i - 1], sigma_t[i - 1], obs.T[i].flatten())
