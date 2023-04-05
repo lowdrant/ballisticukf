@@ -3,7 +3,7 @@ __all__ = ['ParticleFilter', 'ExtendedKalmanFilter']
 Implement filters for evaluation in main.py
 """
 
-from numpy import asarray, einsum, eye, zeros, zeros_like
+from numpy import asarray, einsum, eye, newaxis, zeros, zeros_like
 from numpy.linalg import pinv
 from numpy.random import choice
 
@@ -88,21 +88,26 @@ def arrmatmul(A, B, out=None):
 class ExtendedKalmanFilter():
     """unforced EKF implementation as described in Thrun Chp3 p59.
 
-    TODO: allow callable or matrices for G,H,R,Q
+    TODO: __call__ factory in init 
+        - allow callable or matrices for G,H,R,Q
     TODO: pre-allocate matrices where possible
+    TODO: remove vectorization since only 1 "particle" per call
     """
 
     def __init__(self, g, h, G, H, R, Q, dbg=False):
         for k in ('g', 'h', 'G', 'H'):
             fun = eval(k)
-            assert callable(k), f'{k} must be callable'
+            assert callable(fun), f'{k} must be callable'
             setattr(self, k, fun)
         self.R, self.Q = asarray(R), asarray(Q)
-        self.M, self.K = len(self.R), len(self.Q)
+        self.N, self.K = len(self.R), len(self.Q)
 
         # debuggers
         self.dbg = dbg
         self.Klog, self.Glog, self.Hlog = [], [], []
+        # if dbg:
+        #    self.__call__ = self._call_dbg
+        #self.__call__ = self._call_base
 
     def __call__(self, mu_t1, sigma_t1, z_t):
         """(vectorized) run EKF
@@ -113,39 +118,32 @@ class ExtendedKalmanFilter():
         """
         mu_t1, sigma_t1, z_t = asarray(mu_t1), asarray(sigma_t1), asarray(z_t)
         mubar_t = self.g(mu_t1)
-        Ht = self.H(mubar_t)
-        sigmabar_t = self._calc_sigmabart(mu_t1, sigma_t1)
-        K_t = self._calc_Kt(sigmabar_t, Ht)
-        if self.dbg:
-            Klog.append(Kt)
-            Hlog.append(Ht)
-            Glog.append(Gt)
+        H_t, G_t = self.H(mubar_t), self.G(mu_t1)
+        sigmabar_t = self._calc_sigmabart(G_t, mu_t1, sigma_t1, self.R)
+        K_t = self._calc_Kt(sigmabar_t, H_t, self.Q)
         sigma_t = self._calc_sigmat(K_t, H_t, sigmabar_t)
-        # TODO: check vectorization
-        mu_t = mubar_t + arrmatmul(K_t, z_t - self.h(mubar_t))
+        mu_t = (z_t - self.h(mubar_t).squeeze()).T
+        mu_t = K_t @ mu_t
+        mu_t += mubar_t.T
         return mu_t, sigma_t
 
-    def _calc_sigmabart(self, mu_t1, sigma_t1):
-        """(vectorized) Calculate variance before measurement"""
-        Gt = self.G(mu_t1)
-        sigmabar_t = arrmatmul(Gt, sigma_t1)
-        sigmabar_t = arrmatmul(sigmabar_t, Gt)
-        sigmabar_t += self.R  # TODO: check vectorization
-        return sigmabar_t
+    def _calc_sigmabart(self, G_t, mu_t1, sigma_t1, R_t, out=None):
+        out = G_t @ sigma_t1 @ G_t.T + R_t
+        return out
 
-    def _calc_Kt(self, sigmabar_t, Ht):
-        """(vectorized) Calculate Kalman Gain"""
-        H_tT = H_t.transpose(*H_t.shape[:-2], H_t.shape[-1], H_t.shape[-2])
-        sigmaHT = arrmatmul(sigmabar_t, H_tT)
-        HsigmaHT = arrmatmul(H_t, sigmaHT)
-        HsigmaHT_plus_Q = HsigmaHT + self.Q  # TODO: check vectorization
-        return arrmatmul(sigmaHT, pinv(HsigmaHT_plus_Q))
+    def _calc_Kt(self, sigmabar_t, H_t, Q_t, out=None):
+        out = sigmabar_t @ H_t.T @ pinv(H_t @ sigmabar_t @ H_t.T + Q_t)
+        return out
 
     def _calc_sigmat(self, K_t, H_t, sigmabar_t):
-        """(vectorized) Calculate variance after measurement"""
-        KH = arrmatmul(Kt, Ht)
+        KH = K_t @ H_t
         I = zeros_like(KH)
         I[:] = eye(len(KH.T))
-        ImKH = I - KH  # TODO: check vectorization
-        return arrmatmul(ImKH, sigmabar_t)
+        ImKH = I - KH
+        return ImKH @ sigmabar_t
 
+    def _prealloc(self):
+        """allocate intermediate arrays once for efficiency/njit
+        compatability"""
+        raise NotImplementedError
+        self.I = eye(self.K)

@@ -23,14 +23,15 @@ xi0 = (0, 0, 0.5)  # xdot,ydot,thetadot
 t = arange(0, t1, dt)
 gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
 
-N, M = len(t), 5 + 2 * npts
+N, K = len(t), 2 * npts
+M = K + 5
 
 scale = [0.01] * 2 + [0.0001] * 2 + [0.1] + [0.000001] * (2 * npts)
 
 # Model Uncertainty Covariance
 R = eye(M)
 # Measurement Noise Covariance
-Q = eye(M)
+Q = eye(K)
 
 # ===================================================================
 # State Transitions
@@ -49,16 +50,18 @@ def g(xtm1):
                angle from CoM.
     """
     xt = array(xtm1, copy=1)
-    n = len(xt.T)
     # CoM Motion
     xt[..., 0] += xtm1[..., 2] * dt
     xt[..., 1] += xtm1[..., 3] * dt
     xt[..., 3] -= dt
     # Marker Motion
-    r = sqrt(xt[..., 5:n:2]**2 + xt[..., 6:n:2]**2)
-    th = arctan2(*xt.reshape(..., (n - 5) // 2, 2).T)
-    xt[..., 5:n:2] += r * (cos(dt * xt[..., 4] + th) - cos(th))
-    xt[..., 6:n:2] += r * (sin(dt * xt[..., 4] + th) - sin(th))
+    M = len(xt.T)
+    numpts = (M - 5) // 2
+    r = sqrt(xt[..., 5:M:2]**2 + xt[..., 6:M:2]**2)
+    thview = xt[..., 5:].reshape(xt.shape[:-1] + (numpts, 2))
+    th = arctan2(*thview.T).T
+    xt[..., 5:M:2] += r * (cos(dt * xt[..., 4] + th) - cos(th))
+    xt[..., 6:M:2] += r * (sin(dt * xt[..., 4] + th) - sin(th))
 
     return xt
 
@@ -98,7 +101,7 @@ def G(xtm1, out=None):
     out[..., 0, 2] = dt  # x on vx
     out[..., 1, 3] = dt  # y on vy
     out[..., n_mx, n_my] = 1  # my marker dependence
-    out[..., n_my, n_mz] = 1  # mx marker dependence
+    out[..., n_my, n_mx] = 1  # mx marker dependence
     out[..., 5:, 4] = 1  # theta_dot marker dependence
     return out
 
@@ -106,15 +109,14 @@ def G(xtm1, out=None):
 def H(mubar_t, out=None):
     """Jacobian of h.
     INPUTS:
-        mubar_t -- ...NxM -- N estimates of M states at time t-1.
+        mubar_t -- NxM -- N estimates of M states at time t-1.
                           Format: (x,y,vx,vy,w,mx0,my0,...,mxN,myN)
     OUTPUTS:
-        Ht -- ...(M-5)xM -- jacoban of h at mubar_t
+        Ht -- (M-5)xM -- jacoban of h at mubar_t
     """
     mubar_t = asarray(mubar_t)
-    M = len(mubar_t.T)
     if out is None:
-        out = zeros(mubar_t.shape[-2] + (M - 5, M), dtype=float)
+        out = zeros(mubar_t.shape[:-2] + (M - 5, M), dtype=float)
     out[...] = 0.
     out[..., 5:] = eye(M - 5)
     return out
