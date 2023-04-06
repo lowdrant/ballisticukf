@@ -119,9 +119,11 @@ def _EKF_matmuls_prealloc(sigma, z, R, Q, H, G, mubar, hmubar, mu_t, sigma_t,
 
 
 class ExtendedKalmanFilter():
+    # region
     """EKF implementation as described in Thrun Chp3 p59.
     TODO: describe inference and
     TODO: pre-allocate matrices where possible
+    TODO: njit option
 
     INPUTS:
         g -- callable -- state transition (u,mu)->mubar
@@ -132,7 +134,7 @@ class ExtendedKalmanFilter():
         Q -- callable or MxM -- observation covariance (u,mu,sigma,z)->MxM
         N -- int, optional -- state space dimenstion, default: None
         M -- int, optional -- observation space dimenstion, default: None
-        rbr -- bool, optional -- callables return by reference, default: False
+        rbr -- bool, optional -- set true if callables return by reference, default: False
     EXAMPLE:
 
     NOTES:
@@ -140,24 +142,17 @@ class ExtendedKalmanFilter():
              any (G,H,R,Q) are not functions. This
 
     """
+    # endregion
 
-    def __init__(self, g, h, G, H, R, Q, N=None, M=None, retbyref=False):
+    def __init__(self, g, h, G, H, R, Q, N=None, M=None, rbr=False):
         assert callable(g), 'g must be callable'
         assert callable(h), 'h must be callable'
-        self.g, self.h = g, h
-
-        # Determine Calculation Setup
-        N, M = self._get_mtx_sizes(N, M, G, H, R, Q)
-        if (N is None) or (M is None):
-            assert not retbyref, 'cannot preallocate matrices of unknown shape'
+        N, M = self._infer_mtxsz(N, M, G, H, R, Q)
         if (N is None) ^ (M is None):
-            warn(f'Matrix sizes only partly specified: {N},{M}')
+            warn(f'Matrix sizes only partially specified: N={N},M={M}')
+        self._predict, self._update = self._factory(N, M, g, h, G, H, R, Q, rbr)
 
-        self.G, self.H, self.R, self.Q = G, H, R, Q
-
-        self._filterfun = self._filter_static
-
-    def _get_mtx_sizes(self, N, M, G, H, R, Q):
+    def _infer_mtxsz(self, N, M, G, H, R, Q):
         if N is None:  # infer N
             N = len(G) if not callable(G) else N
             N = len(R) if not callable(R) else N
@@ -170,8 +165,32 @@ class ExtendedKalmanFilter():
             N = len(H.T) if N is None else N
         return N, M
 
+    def _factory(self, N, M, g, h, G, H, R, Q, rbr):
+        raise NotImplementedError
+
     # ========================================================================
-    # Call Setup
+    # EKF Implementations
+
+    def _predict_base(self, mu, sigma, u, z):
+        raise NotImplementedError
+
+    def _predict_prealloc(self, mu, sigma, u, z):
+        raise NotImplementedError
+
+    def _predict_rbr(self, mu, sigma, u, z):
+        raise NotImplementedError
+
+    def _update_base(self, mubar, zhat, sigma, G, H, R, Q, mu_t, sigma_t):
+        raise NotImplementedError
+
+    def _update_prealloc(self, mubar, zhat, sigma, G, H, R, Q, mu_t, sigma_t):
+        raise NotImplementedError
+
+    def _update_rbr(self, mubar, zhat, sigma, G, H, R, Q, mu_t, sigma_t):
+        raise NotImplementedError
+
+    # ========================================================================
+    # EKF Call
 
     def __call__(self, mu, sigma, u, z, mu_t=None, sigma_t=None):
         """run EKF
@@ -184,51 +203,11 @@ class ExtendedKalmanFilter():
             mu_t = zeros_like(mu)
         if sigma_t is None:
             sigma_t = zeros_like(sigma)
-        return self._filterfun(mu, sigma, u, z, mu_t, sigma_t)
+        mubar, zhat, G, H, R, Q = self._predict(mu, sigma, u, z)
+        return self._update(G, sigma, R, H, Q, mubar, z, zhat, mu_t, sigma_t)
 
-    # ========================================================================
-    # Basic Filter Implementations
+    def _predict(self, mu, sigma, u, z):
+        raise NotImplementedError
 
-    def _filter_base(self, mu, sigma, u, z, mu_t, sigma_t):
-        """Generic EKF implementation"""
-        mubar = self.g(u, mu)
-        H, G = self.H(mubar), self.G(u, mu)
-        R = self.R(mu, sigma, u, z)
-        Q = self.Q(mu, sigma, u, z)
-        hmubar = self.h(mubar)
-        return _EKF_matmuls(sigma, z, R, Q, H, G, mubar, hmubar, mu_t, sigma_t)
-
-    def _filter_static(self, mu, sigma, u, z, mu_t, sigma_t):
-        """EKF with constant matrices"""
-        mubar = self.g(u, mu)
-        hmubar = self.h(mubar)
-        N, M = len(mubar), len(hmubar)
-        sigmabar = zeros((N, N))
-        K = zeros((N, M))
-        I = eye(N)
-        HsHT = zeros((M, M))
-        return _EKF_matmuls(sigma, z, self.R, self.Q, self.H,
-                            self.G, mubar, hmubar, mu_t, sigma_t)
-        # return _EKF_matmuls_prealloc(sigma, z, self.R, self.Q, self.H,
-        #                              self.G, mubar, hmubar, mu_t, sigma_t,
-        #                              sigmabar, K, I, HsHT)
-
-    # ========================================================================
-    # Memory Pre-Alloc Methods
-
-    def _prealloc(self):
-        """allocate intermediate arrays once for efficiency/njit
-        compatability"""
-        self.I = eye(self.N)
-        self.mubar = zeros(self.N)
-        self.h_mubar = zeros(self.M)
-        self.sigmabar = zeros((self.N, self.N))
-        self.K = zeros((self.N, self.M))
-        self.Rt = zeros_like(self.sigmabar)
-        self.Qt = zeros((self.M, self.M))
-
-    def _filter_prealloc(self, mu, sigma, u, z, mu_t, sigma_t):
-        self.g(u, mu, self.mubar)
-        self.h(mubar, self.h_mubar)
-        return _EKF_matmuls_prealloc(self, sigma, z, R, Q, H, G, self.mubar, mu_t, sigma_t,
-                                     self.sigmabar, self.K, self.I, self.hmubar)
+    def _update(self, mubar, zhat, sigma, G, H, R, Q, mu_t, sigma_t):
+        raise NotImplementedError
