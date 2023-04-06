@@ -3,7 +3,8 @@ Helper functions to keep main.py clean and readable
 """
 import matplotlib.pyplot as plt
 from matplotlib.colors import TABLEAU_COLORS as TC
-from numpy import *
+from numpy import (array, asarray, c_, cos, diff, einsum, isscalar, mean, pi,
+                   prod, r_, sin, sqrt, sum, zeros, zeros_like)
 from numpy.random import rand, seed
 from scipy.integrate import odeint
 
@@ -41,9 +42,10 @@ def gen_transform(r, th):
 
 
 def gen_markers(npts):
+    """generate markers on disk for observations"""
     seed(0)
     tf = []
-    for i in range(npts):
+    for _ in range(npts):
         r = rand()
         th = 2 * pi * rand()
         tf.append(gen_transform(r, th))
@@ -232,7 +234,8 @@ def plot_rb(t, tru, est, kwest, c, lbls):
     ax = newplot('rb params')
     for i in range((est.shape[1] - 5) // 2):
         k = 5 + 2 * i
-        rtru = sqrt(sum((tru[..., [k, k + 1]])**2, -1))
+        rtru = sqrt(sum(tru[..., [k, k + 1]]**2, 1))
+        print(tru.shape, rtru.shape, tru[..., [k, k + 1]].shape, k)
 #        rout = sqrt(sum((out[..., [0, 1]] - est[..., i, :].T)**2, -1))
         rest = sqrt(sum((est[..., [k, k + 1]])**2, -1))
  #       ax.plot(t, rout, '--', c=c[i], lw=3)  # ,label=f'out {i})

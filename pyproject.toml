@@ -1,14 +1,14 @@
 [tool.isort]
-line_length = 80
+line_length = 79
 
 [tool.autopep8]
-max_line_length = 80
+max_line_length = 79
 ignore = E731, W391
 
 [tool.pylint]
 disable = [comprehension-escape, redefined-outer-name, invalid-name,
-           unused-wildcard-import, unsubscriptable-object,
-           cell-var-from-loop, ]  # ! needs trailing comma
+           unused-wildcard-import, unsubscriptable-object, wildcard-import,
+           wrong-import-position, cell-var-from-loop, unused-argument, ]  # ! needs trailing comma
 notes = [XXX, TODO,]  # ! needs trailing comma
 
 max-line-length = 80
