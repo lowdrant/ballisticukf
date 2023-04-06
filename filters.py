@@ -2,8 +2,10 @@ __all__ = ['ParticleFilter', 'ExtendedKalmanFilter']
 """
 Implement filters for evaluation in main.py
 """
-from numba import njit, jit
-from numpy import asarray, eye, matmul, newaxis, zeros, zeros_like, dot
+from warnings import warn
+
+from numba import jit, njit
+from numpy import asarray, dot, eye, matmul, newaxis, zeros, zeros_like
 from numpy.linalg import pinv
 from numpy.random import choice
 
@@ -70,7 +72,7 @@ class ParticleFilter():
         return Xbart[ii, :-1]
 
 
-@njit
+# @njit
 def _EKF_matmuls(sigma, z, R, Q, H, G, mubar, hmubar, mu_t, sigma_t):
     """Generic EKF matmuls"""
     N = mubar.size
@@ -81,7 +83,7 @@ def _EKF_matmuls(sigma, z, R, Q, H, G, mubar, hmubar, mu_t, sigma_t):
     return mu_t, sigma_t
 
 
-@njit
+# @njit
 def _EKF_matmuls_prealloc(sigma, z, R, Q, H, G, mubar, hmubar, mu_t, sigma_t,
                           sigmabar, K, I, HsHT):
     """EKF matrix muls optimized for no memory allocation
@@ -118,45 +120,58 @@ def _EKF_matmuls_prealloc(sigma, z, R, Q, H, G, mubar, hmubar, mu_t, sigma_t,
 
 class ExtendedKalmanFilter():
     """EKF implementation as described in Thrun Chp3 p59.
-
+    TODO: describe inference and
     TODO: pre-allocate matrices where possible
-    TODO: debuggers
-    TODO: API for R,Q matrices
+
+    INPUTS:
+        g -- callable -- state transition (u,mu)->mubar
+        h -- callable -- observation (mubar)->zhat
+        G -- callable or NxN -- state transition Jacobian (u,mu)->NxN
+        H -- callable or MxN -- observation Jacobian (mubar)->MxN
+        R -- callable or NxN -- state covariance (u,mu,sigma,z)->NxN
+        Q -- callable or MxM -- observation covariance (u,mu,sigma,z)->MxM
+        N -- int, optional -- state space dimenstion, default: None
+        M -- int, optional -- observation space dimenstion, default: None
+        rbr -- bool, optional -- callables return by reference, default: False
+    EXAMPLE:
+
+    NOTES:
+        N,M: Constructor will attempts to infer matrix size from matrices if
+             any (G,H,R,Q) are not functions. This
+
     """
 
-    def __init__(self, g, h, G, H, R, Q, N=None, M=None, pbr=False, dbg=False):
+    def __init__(self, g, h, G, H, R, Q, N=None, M=None, retbyref=False):
+        assert callable(g), 'g must be callable'
+        assert callable(h), 'h must be callable'
         self.g, self.h = g, h
-        assert callable(self.g), 'g must be callable'
-        assert callable(self.h), 'h must be callable'
-        self.N, self.M = N, M
+
+        # Determine Calculation Setup
+        N, M = self._get_mtx_sizes(N, M, G, H, R, Q)
+        if (N is None) or (M is None):
+            assert not retbyref, 'cannot preallocate matrices of unknown shape'
+        if (N is None) ^ (M is None):
+            warn(f'Matrix sizes only partly specified: {N},{M}')
+
         self.G, self.H, self.R, self.Q = G, H, R, Q
-        self.pbr = pbr
-        # can_prealloc = self._determine_prealloc()
-        #self._filterfun = self._call_factory()
+
         self._filterfun = self._filter_static
+
+    def _get_mtx_sizes(self, N, M, G, H, R, Q):
+        if N is None:  # infer N
+            N = len(G) if not callable(G) else N
+            N = len(R) if not callable(R) else N
+        if M is not None:  # infer M
+            M = len(Q) if not callable(Q) else M
+        # H contains both
+        if not callable(H):
+            H = asarray(H)  # MxN
+            M = len(H) if M is None else M
+            N = len(H.T) if N is None else N
+        return N, M
 
     # ========================================================================
     # Call Setup
-
-    def _determine_prealloc(self):
-        if self.N is not None and self.M is not None:
-            return True
-
-        for k in ('G', 'H', 'R', 'Q'):
-            attr = getattr(self, k)
-            if callable(attr):
-                anycall = True
-                nonecall = False
-        assert anycall ^ nonecall, 'issue determining callable matrices'
-        allcall = anycall and not nonecall
-
-    def _call_factory(self, can_prealloc):
-        """Go over EKF matrix params and determine if callable or not
-        and adjust class params accordingly
-        """
-        if nonecall:
-            return self._filter_static
-    # '''
 
     def __call__(self, mu, sigma, u, z, mu_t=None, sigma_t=None):
         """run EKF
@@ -170,18 +185,6 @@ class ExtendedKalmanFilter():
         if sigma_t is None:
             sigma_t = zeros_like(sigma)
         return self._filterfun(mu, sigma, u, z, mu_t, sigma_t)
-
-    # ========================================================================
-    # Interface Wrappers
-    def gwrap(self, u, mu):
-        if self.pbr:
-            return self.g(u, mu, self.mubar)
-        return self.g(u, mu)
-
-    def hwrap(self, mubar):
-        if self.pbr:
-            return self.h(mubar, self.h_mubar)
-        return self.h(mubar)
 
     # ========================================================================
     # Basic Filter Implementations
@@ -204,11 +207,11 @@ class ExtendedKalmanFilter():
         K = zeros((N, M))
         I = eye(N)
         HsHT = zeros((M, M))
-        # return _EKF_matmuls(sigma, z, self.R, self.Q, self.H,
-        #                              self.G, mubar, hmubar,mu_t, sigma_t)
-        return _EKF_matmuls_prealloc(sigma, z, self.R, self.Q, self.H,
-                                     self.G, mubar, hmubar, mu_t, sigma_t,
-                                     sigmabar, K, I, HsHT)
+        return _EKF_matmuls(sigma, z, self.R, self.Q, self.H,
+                            self.G, mubar, hmubar, mu_t, sigma_t)
+        # return _EKF_matmuls_prealloc(sigma, z, self.R, self.Q, self.H,
+        #                              self.G, mubar, hmubar, mu_t, sigma_t,
+        #                              sigmabar, K, I, HsHT)
 
     # ========================================================================
     # Memory Pre-Alloc Methods
