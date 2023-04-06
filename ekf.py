@@ -6,11 +6,9 @@ Choose units (mass, length, time) s.t. m = r = g = I = 1
 """
 from time import time
 
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
-from numba import jit, njit
-from numpy import *
-from numpy.random import normal, rand, seed
+from numba import njit
+from numpy import arange, arctan2, cos, eye, r_, sin, sqrt, zeros
+from numpy.random import seed
 
 from filters import *
 from helpers import *
@@ -109,13 +107,14 @@ H[:, N - M:] = eye(M)
 # ===================================================================
 # Estimation
 
-do_rbr = 1
+rbr = 1
 do_njit = 0
+callrbr = 0
 
-ekf = ExtendedKalmanFilter(g, h, G, H, R, Q, njit=do_njit)
-if do_rbr:
-    ekf = ExtendedKalmanFilter(g_rbr, h_rbr, G, H, R,
-                               Q, rbr=do_rbr, njit=do_njit)
+kwargs = {'rbr': rbr, 'njit': do_njit, 'callrbr': callrbr}
+ekf = EKF(g, h, G, H, R, Q, **kwargs)
+if rbr:
+    ekf = EKF(g_rbr, h_rbr, G, H, R, Q, **kwargs)
 
 # Filtering
 mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
@@ -123,7 +122,7 @@ mu_t[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
 print('Starting EKF...')
 tref = time()
 seed(0)
-if do_rbr:
+if callrbr:
     for i, _ in enumerate(t):
         ekf(mu_t[i - 1], sigma_t[i - 1], 0,
             obs.T[i].flatten(), mu_t[i], sigma_t[i])
