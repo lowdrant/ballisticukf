@@ -17,7 +17,7 @@ from helpers import *
 
 # Simulation
 dt = 0.01
-t1 = 100
+t1 = 10
 npts = 2
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 5)  # xdot,ydot,thetadot
@@ -51,7 +51,7 @@ def g_rbr(u, mu, mubar):
         Model: disk falling due to gravity with makers at some distance and
                angle from CoM.
     """
-    mubar = mu.copy()  # view(mu.dtype)
+    mubar[...] = mu.copy()  # view(mu.dtype)
     # CoM Motion
     mubar[..., 0] += mu[..., 2] * dt
     mubar[..., 1] += mu[..., 3] * dt
@@ -68,7 +68,7 @@ def g_rbr(u, mu, mubar):
 
 
 def g(u, mu):
-    mubar = mu
+    mubar = mu.copy()
     return g_rbr(u, mu, mubar)
 
 
@@ -82,14 +82,14 @@ def h_rbr(mubar_t, out):
         hat_zt -- ...Nx(M-5) -- N estimates of M-5 observations at time t.
                                 Format: (mx0,my0,...,mxN,myN)
     """
-    out = mubar_t[..., 5:]
+    out[...] = mubar_t[..., 5:].copy()
     out[..., 5::2] += mubar_t[..., 0]
     out[..., 6::2] += mubar_t[..., 1]
     return out
 
 
 def h(mubar_t):
-    out = mubar_t[..., 5:]
+    out = mubar_t[..., 5:].copy()
     return h_rbr(mubar_t, out)
 
 
@@ -109,17 +109,28 @@ H[:, N - M:] = eye(M)
 # ===================================================================
 # Estimation
 
+do_rbr = 1
+do_njit = 0
+
+ekf = ExtendedKalmanFilter(g, h, G, H, R, Q, njit=do_njit)
+if do_rbr:
+    ekf = ExtendedKalmanFilter(g_rbr, h_rbr, G, H, R,
+                               Q, rbr=do_rbr, njit=do_njit)
+
 # Filtering
-print('Starting EKF...')
-tref = time()
-ekf = ExtendedKalmanFilter(g, h, G, H, R, Q, rbr=0, njit=0)
 mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
 mu_t[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
+print('Starting EKF...')
+tref = time()
 seed(0)
-for i, _ in enumerate(t):
-    mu_t[i], sigma_t[i] = ekf(
-        mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten()
-    )
+if do_rbr:
+    for i, _ in enumerate(t):
+        ekf(mu_t[i - 1], sigma_t[i - 1], 0,
+            obs.T[i].flatten(), mu_t[i], sigma_t[i])
+else:
+    for i, _ in enumerate(t):
+        mu_t[i], sigma_t[i] = ekf(
+            mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten())
 print(f'Done! t={time()-tref:.2f}s')
 
 # ===================================================================

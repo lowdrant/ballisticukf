@@ -98,8 +98,8 @@ def _EKF_matmuls_rbr(sigma, z, R, Q, H, G, mubar, zhat, mu_t, sigma_t):
     N = mubar.size
     sigmabar = G @ sigma @ G.T + R
     K = sigmabar @ H.T @ pinv(H@sigmabar@H.T + Q)
-    mu_t = mubar + K @ (z - zhat)
-    sigma_t = (eye(N) - K@H)@sigmabar
+    mu_t[...] = mubar + K @ (z - zhat)
+    sigma_t[...] = (eye(N) - K@H)@sigmabar
     return mu_t, sigma_t
 
 
@@ -109,8 +109,8 @@ def _EKF_matmuls_rbr_njit(sigma, z, R, Q, H, G, mubar, zhat, mu_t, sigma_t):
     N = mubar.size
     sigmabar = G @ sigma @ G.T + R
     K = sigmabar @ H.T @ pinv(H@sigmabar@H.T + Q)
-    mu_t = mubar + K @ (z - zhat)
-    sigma_t = (eye(N) - K@H)@sigmabar
+    mu_t[...] = mubar + K @ (z - zhat)
+    sigma_t[...] = (eye(N) - K@H)@sigmabar
     return mu_t, sigma_t
 
 # @njit
@@ -197,6 +197,7 @@ class ExtendedKalmanFilter():
 
         self.rbr = rbr
         self._matmuls = self._factory_matmuls(njit)
+        self._linearize = self._factory_linearize()
 
     def __call__(self, mu, sigma, u, z, mu_t=None, sigma_t=None):
         """run EKF
@@ -211,16 +212,6 @@ class ExtendedKalmanFilter():
         #     sigma_t = zeros_like(sigma)
         mubar, zhat, G, H, R, Q = self._linearize(mu, sigma, u, z)
         return self._matmuls(G, sigma, R, H, Q, mubar, z, zhat, mu_t, sigma_t)
-
-    def _linearize(self, mu, sigma, u, z):
-        """linearization calcs with no explicity optimizations"""
-        mubar = self.gfun(u, mu)
-        zhat = self.hfun(mubar)
-        G_t = self.Gfun(u, mu)
-        H_t = self.Hfun(mubar)
-        R_t = self.Rfun(mu, sigma, u, z)
-        Q_t = self.Qfun(mu, sigma, u, z)
-        return mubar, zhat, G_t, H_t, R_t, Q_t
 
     # ========================================================================
     # Factory Methods
@@ -266,7 +257,8 @@ class ExtendedKalmanFilter():
 
     def Gfun(self, u, mu):
         if not callable(self.G):
-            return self.G
+            self.G_t = self.G.view(self.G.dtype)
+            return self.G_t
         args = [u, mu]
         if self.rbr:
             args += [self.G_t]
@@ -274,7 +266,8 @@ class ExtendedKalmanFilter():
 
     def Hfun(self, mubar):
         if not callable(self.H):
-            return self.H
+            self.H_t = self.H.view(self.H.dtype)
+            return self.H_t
         args = [mubar]
         if self.rbr:
             args += [self.zhat]
@@ -282,7 +275,8 @@ class ExtendedKalmanFilter():
 
     def Rfun(self, mu, sigma, u, z):
         if not callable(self.R):
-            return self.R
+            self.R_t = self.R.view(self.R.dtype)
+            return self.R_t
         args = [mu, sigma, u, z]
         if self.rbr:
             args += [self.R_t]
@@ -290,7 +284,8 @@ class ExtendedKalmanFilter():
 
     def Qfun(self, mu, sigma, u, z):
         if not callable(self.Q):
-            return self.Q
+            self.Q_t = self.Q.view(self.Q.dtype)
+            return self.Q_t
         args = [mu, sigma, u, z]
         if self.rbr:
             args += [self.Q_t]
@@ -299,15 +294,30 @@ class ExtendedKalmanFilter():
     # ========================================================================
     # Linearization Methods
 
-    # def _linearize_rbr(self, mu, u):
-    #     """linearization calcs with return-by-reference optimizations"""
-    #     self.gfun(u, mu, self.mubar)
-    #     self.hfun(self.mubar, self.zhat)
-    #     self.Gfun(u, mu, self.G_t)
-    #     self.Hfun(self.mubar, self.H_t)
-    #     # self.Rfun(, self.R_t)
-    #     # self.Qfun(, self.Q_t)
-    #     return self.mubar, self.zhat, self.G_t, self.H_t, self.R_t, self.Q_t
+    def _factory_linearize(self):
+        if self.rbr:
+            return self._linearize_rbr
+        return self._linearize_base
+
+    def _linearize_base(self, mu, sigma, u, z):
+        """linearization calcs with no explicity optimizations"""
+        mubar = self.gfun(u, mu)
+        zhat = self.hfun(mubar)
+        G_t = self.Gfun(u, mu)
+        H_t = self.Hfun(mubar)
+        R_t = self.Rfun(mu, sigma, u, z)
+        Q_t = self.Qfun(mu, sigma, u, z)
+        return mubar, zhat, G_t, H_t, R_t, Q_t
+
+    def _linearize_rbr(self, mu, sigma, u, z):
+        """linearization calcs with return-by-reference optimizations"""
+        self.gfun(u, mu)
+        self.hfun(self.mubar)
+        self.Gfun(u, mu)
+        self.Hfun(self.mubar)
+        self.Rfun(mu, sigma, u, z)
+        self.Qfun(mu, sigma, u, z)
+        return self.mubar, self.zhat, self.G_t, self.H_t, self.R_t, self.Q_t
 
     # ========================================================================
     # MatMul Methods
