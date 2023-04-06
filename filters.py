@@ -124,8 +124,9 @@ class EKF:
         1. mixed constant and callable Jacobian, covariance matrices
         2. return-by-reference callables (g, h, matrices)
            - if used, ALL callables must return by reference
-        3. return-by-reference estimation
-        4. njit-optimized matrix operations
+        3. inferring matrix sizes for return-by-reference callables
+        4. return-by-reference estimation
+        5. njit-optimized matrix operations
 
     Indirectly supports:
         1. Nonautonomous systems via direct attribute access (see Examples)
@@ -154,6 +155,9 @@ class EKF:
 
         Configure for ALL dynamics callables returning by reference:
         >>> ekf = EKF(g,h,G,H,R,Q, rbr=True)
+
+        Explicitly specify matrix sizes:
+        >>> ekf = EKF(g,h,G,H,R,Q, N=N,M=M)
 
         Configure to return estimates by reference:
         >>> mu1, sigma1 = zeros_like(mu0), zeros_like(sigma0)
