@@ -2,8 +2,8 @@ __all__ = ['ParticleFilter', 'ExtendedKalmanFilter']
 """
 Implement filters for evaluation in main.py
 """
-from numba import njit
-from numpy import asarray, eye, matmul, newaxis, zeros, zeros_like
+from numba import njit, jit
+from numpy import asarray, eye, matmul, newaxis, zeros, zeros_like, dot
 from numpy.linalg import pinv
 from numpy.random import choice
 
@@ -82,37 +82,36 @@ def _EKF_matmuls(sigma, z, R, Q, H, G, mubar, hmubar, mu_t, sigma_t):
 
 
 @njit
-def _EKF_matmuls_prealloc(self, sigma, z, R, Q, H, G, mubar, mu_t, sigma_t,
-                          sigmabar, K, I, hmubar):
+def _EKF_matmuls_prealloc(sigma, z, R, Q, H, G, mubar, hmubar, mu_t, sigma_t,
+                          sigmabar, K, I, HsHT):
     """EKF matrix muls optimized for no memory allocation
 
     Requires preallocation of matrices
         - sigmabar, K, I, hmubar
+
+    https://github.com/numba/numba/issues/3804
     """
     # Sigma bar
     # ---------
-    matmul(G, sigma, out=sigmabar)
-    matmul(sigmabar, G.T, out=sigmabar)
+    dot(G, sigma, out=sigmabar)
+    dot(sigmabar, G.T, out=sigmabar)
     sigmabar += R
     # Kalman Gain
     # -----------
-    matmul(H, sigmabar, out=K)
-    matmul(self.K, H.T, out=K)
-    K += Q
-    K[...] = pinv(K)
-    matmul(H.T, K, out=K)
-    matmul(sigmabar, K, out=K)
+    dot(sigmabar, H.T, out=K)
+    dot(H, K, out=HsHT)
+    HsHT += Q
+    HsHT[...] = pinv(HsHT)
+    dot(K, HsHT, out=K)
     # mu
     # --
-    mu_t = z
-    mu_t -= hmubar
-    matmul(K, mu_t, out=mu_t)
+    dot(K, z - hmubar, out=mu_t)
     mu_t += mubar
     # sigma
     # -----
-    matmul(-K, H, out=sigma_t)
+    dot(-K, H, out=sigma_t)
     sigma_t += I
-    matmul(sigma_t, sigmabar, out=sigma_t)
+    dot(sigma_t, sigmabar, out=sigma_t)
 
     return mu_t, sigma_t
 
@@ -131,6 +130,7 @@ class ExtendedKalmanFilter():
         assert callable(self.h), 'h must be callable'
         self.N, self.M = N, M
         self.G, self.H, self.R, self.Q = G, H, R, Q
+        self.pbr = pbr
         # can_prealloc = self._determine_prealloc()
         #self._filterfun = self._call_factory()
         self._filterfun = self._filter_static
@@ -173,14 +173,14 @@ class ExtendedKalmanFilter():
 
     # ========================================================================
     # Interface Wrappers
-    def gwrap(self,u, mu):
+    def gwrap(self, u, mu):
         if self.pbr:
-            return self.g(u,mu,self.mubar)
-        return self.g(u,mu)
+            return self.g(u, mu, self.mubar)
+        return self.g(u, mu)
 
-    def hwrap(self,mubar)
+    def hwrap(self, mubar):
         if self.pbr:
-            return self.h(mubar,self.h_mubar)
+            return self.h(mubar, self.h_mubar)
         return self.h(mubar)
 
     # ========================================================================
@@ -199,8 +199,16 @@ class ExtendedKalmanFilter():
         """EKF with constant matrices"""
         mubar = self.g(u, mu)
         hmubar = self.h(mubar)
-        return _EKF_matmuls(sigma, z, self.R, self.Q, self.H,
-                            self.G, mubar, hmubar, mu_t, sigma_t)
+        N, M = len(mubar), len(hmubar)
+        sigmabar = zeros((N, N))
+        K = zeros((N, M))
+        I = eye(N)
+        HsHT = zeros((M, M))
+        # return _EKF_matmuls(sigma, z, self.R, self.Q, self.H,
+        #                              self.G, mubar, hmubar,mu_t, sigma_t)
+        return _EKF_matmuls_prealloc(sigma, z, self.R, self.Q, self.H,
+                                     self.G, mubar, hmubar, mu_t, sigma_t,
+                                     sigmabar, K, I, HsHT)
 
     # ========================================================================
     # Memory Pre-Alloc Methods
@@ -219,5 +227,5 @@ class ExtendedKalmanFilter():
     def _filter_prealloc(self, mu, sigma, u, z, mu_t, sigma_t):
         self.g(u, mu, self.mubar)
         self.h(mubar, self.h_mubar)
-        return _EKF_matmuls_prealloc(self, sigma, z, R, Q, H, G, mubar, mu_t, sigma_t,
-                                     self.sigmabar, self.K, self.I, hmubar)
+        return _EKF_matmuls_prealloc(self, sigma, z, R, Q, H, G, self.mubar, mu_t, sigma_t,
+                                     self.sigmabar, self.K, self.I, self.hmubar)
