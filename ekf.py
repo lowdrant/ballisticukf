@@ -39,8 +39,7 @@ Q = eye(M)
 # State Transitions
 
 
-# @njit
-def g(u, mu):
+def g_rbr(u, mu, mubar):
     """state transition function
     INPUTS:
         xtm1 -- NxM -- N estimates of M states at time t-1.
@@ -52,8 +51,7 @@ def g(u, mu):
         Model: disk falling due to gravity with makers at some distance and
                angle from CoM.
     """
-    #mubar[...] = mu
-    mubar = mu
+    mubar = mu.copy()  # view(mu.dtype)
     # CoM Motion
     mubar[..., 0] += mu[..., 2] * dt
     mubar[..., 1] += mu[..., 3] * dt
@@ -69,8 +67,13 @@ def g(u, mu):
     return mubar
 
 
+def g(u, mu):
+    mubar = mu
+    return g_rbr(u, mu, mubar)
+
+
 # @njit
-def h(mubar_t):
+def h_rbr(mubar_t, out):
     """state observation function
     INPUTS:
         mubar_t -- ...NxM -- N estimates of M states at time t.
@@ -79,11 +82,15 @@ def h(mubar_t):
         hat_zt -- ...Nx(M-5) -- N estimates of M-5 observations at time t.
                                 Format: (mx0,my0,...,mxN,myN)
     """
-    mubar_t = asarray(mubar_t)
-    out = mubar_t[..., 5:].copy()
+    out = mubar_t[..., 5:]
     out[..., 5::2] += mubar_t[..., 0]
     out[..., 6::2] += mubar_t[..., 1]
     return out
+
+
+def h(mubar_t):
+    out = mubar_t[..., 5:]
+    return h_rbr(mubar_t, out)
 
 
 # Jacobians
@@ -105,13 +112,14 @@ H[:, N - M:] = eye(M)
 # Filtering
 print('Starting EKF...')
 tref = time()
-ekf = ExtendedKalmanFilter(g, h, G, H, R, Q)
+ekf = ExtendedKalmanFilter(g, h, G, H, R, Q, rbr=0, njit=0)
 mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
 mu_t[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
 seed(0)
 for i, _ in enumerate(t):
     mu_t[i], sigma_t[i] = ekf(
-        mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten())
+        mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten()
+    )
 print(f'Done! t={time()-tref:.2f}s')
 
 # ===================================================================
@@ -119,4 +127,4 @@ print(f'Done! t={time()-tref:.2f}s')
 
 est = mu_t
 tru = reconstruct(est, out, obs)
-#plots(t, tru, est)
+plots(t, tru, est)
