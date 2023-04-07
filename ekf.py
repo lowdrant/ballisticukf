@@ -17,9 +17,9 @@ from helpers import *
 # Simulation
 dt = 0.01
 t1 = 10
-npts = 4
+npts = 3
 q0 = (0, 0, 0)   # x,y,theta
-xi0 = (0, 0, 2)  # xdot,ydot,thetadot
+xi0 = (-0., 0, 5)  # xdot,ydot,thetadot
 t = arange(0, t1, dt)
 gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
 
@@ -27,18 +27,22 @@ gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
 L, M = len(t), 2 * npts
 N = M + 5
 # model uncertainty
-R = eye(N)
-R[5::2, 4] = 0.1  # marker delta depends on theta_dot
-# R[0, 2] = 0.1  # x depends on vx
-# R[1, 3] = 0.1  # y depends on vy
-# R[...] = 0
+R = eye(N) * 0.1
+# R = zeros((N,N))
+# fill_diagonal(R[:5, :5], 10)
+R[4, 4] = 1  # unknown thetadot
+# R[0,5:] = 1
+# R[5:,0] = 1
+R[0, 2] = 1  # x depends on vx
+R[2, 0] = 1
+R[1, 3] = 1  # y depends on vy
+R[3, 1] = 1
 # measurement uncertainty
 Q = eye(M)
 Q[...] = 0
 
 # ===================================================================
 # State Transitions
-# TODO: remove unnecessary vectorization
 
 
 def g_rbr(u, mu, mubar):
@@ -116,8 +120,6 @@ def G(u, mu):
     G_t = zeros((N, N))
     return G_rbr(u, mu, G_t)
 
-# @njit
-
 
 def h_rbr(mubar_t, zhat):
     """state observation function
@@ -150,9 +152,9 @@ H[:, 5:] = eye(M)
 # ===================================================================
 # Estimation
 
-rbr = 0
+rbr = 1
 do_njit = 1
-callrbr = 0
+callrbr = 1
 
 kwargs = {'rbr': rbr, 'njit': do_njit, 'callrbr': callrbr}
 ekf = EKF(g, h, G, H, R, Q, **kwargs)
@@ -161,6 +163,9 @@ if rbr:
 
 # Filtering
 mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
+sigma_t[-1] = 10
+fill_diagonal(sigma_t[-1, :5, :5], 10)
+sigma_t[-1, 4, 4] = 100
 mu_t[-1] = [0, 0, 0, 0, 0] + list(obs.T[0].flatten())
 print('Starting EKF...')
 tref = time()
