@@ -141,9 +141,8 @@ class EKFFactory:
         R -- callable or NxN -- state covariance; (u,mu,sigma,z)->NxN
         Q -- callable or MxM -- observation covariance; (u,mu,sigma,z)->MxM
 
-        Each callable also has a keyword argument, <callable_name>_pars,
-        which must be an interable sequence of additional parameters passed
-        during the function call. It will be passed like so: `g(u,mu,*g_pars)`
+        Callables can also be passed additional (constant) parameters by
+        means of the `*_pars` optional keyword args. See Notes.
 
     OPTIONAL INPUTS:
         N -- int, optional -- state space dimension, default: None
@@ -151,6 +150,7 @@ class EKFFactory:
         rbr -- bool, optional -- set true if callables return by reference, default: False
         callrbr -- bool, optional -- set true if EKF call should return by reference, default: False
         njit -- bool, optional -- use njit optimization for matrix operations, default: False
+        g_pars,h_pars,H_pars,G_pars,R_pars,Q_pars -- parameters for callables. See Notes
 
 
     EXAMPLES:
@@ -197,8 +197,14 @@ class EKFFactory:
                              the relevant wrapper call signature, e.g. _Qfun,
                              and the relevant linearization method.
 
-        Callables with different call signatures: Subclass and overwrite
-                                                  the relevant wrappers.
+        Callables with more args: Each callable also has an assosciated
+                                  keyword argument, <callable_name>_pars,
+                                  which is an iterable e of additional
+                                  parameters to be passed when called. It will
+                                  be passed like so for `g`: `g(u,mu,*g_pars)`.
+
+        Callables with very different call signatures: Subclass and overwrite
+                                                       the relevant wrappers.
 
     REFERENCES:
         Thrun, Probabilistic Robotics, Chp 3.3.
