@@ -124,6 +124,7 @@ class EKFFactory:
         1. mixed constant and callable Jacobian, covariance matrices
         2. return-by-reference callables (g, h, matrices)
            - if used, ALL callables must return by reference
+           - return-by-reference MUST be through 3rd argument
         3. inferring matrix sizes for return-by-reference callables
         4. return-by-reference estimation
         5. njit-optimized matrix operations
@@ -132,18 +133,25 @@ class EKFFactory:
         1. Nonautonomous systems via direct attribute access (see Examples)
         2. Changing call signatures via subclassing (see Notes)
 
-    INPUTS:
+    REQUIRED INPUTS:
         g -- callable -- state transition function; (u,mu)->mubar
         h -- callable -- observation function; (mubar)->zhat
         G -- callable or NxN -- state transition Jacobian; (u,mu)->NxN
         H -- callable or MxN -- observation Jacobian; (mubar)->MxN
         R -- callable or NxN -- state covariance; (u,mu,sigma,z)->NxN
         Q -- callable or MxM -- observation covariance; (u,mu,sigma,z)->MxM
+
+        Each callable also has a keyword argument, <callable_name>_pars,
+        which must be an interable sequence of additional parameters passed
+        during the function call. It will be passed like so: `g(u,mu,*g_pars)`
+
+    OPTIONAL INPUTS:
         N -- int, optional -- state space dimension, default: None
         M -- int, optional -- observation space dimention, default: None
         rbr -- bool, optional -- set true if callables return by reference, default: False
         callrbr -- bool, optional -- set true if EKF call should return by reference, default: False
         njit -- bool, optional -- use njit optimization for matrix operations, default: False
+
 
     EXAMPLES:
         Run a single EKF step:
@@ -177,11 +185,12 @@ class EKFFactory:
         N,M: Constructor will attempt to infer matrix size from matrices. This
              will not overwrite N or M if they are specified.
 
-        return-by-reference: All callables must be return by reference if
-                             this option is used. Since it is not possible to
-                             tell if a function returns by reference, I did
-                             not provide an rbr flag for each possible
-                             callable.
+        return-by-reference: THIRD (3rd) function arg must be
+                             return-by-reference variable. Also, ALL callables
+                             must be return by reference if this option is
+                             used. Since it is not possible to tell if a
+                             function returns by reference, I did not provide
+                             an rbr flag for each possible callable.
 
         Variable covariance: Covariance callables get passed (u,mu,sigma,z).
                              If you need something else, try overriding
@@ -197,7 +206,15 @@ class EKFFactory:
     """
     # endregion
 
-    def __init__(self, g, h, G, H, R, Q, N=None, M=None, rbr=False, callrbr=False, njit=False):
+    def __init__(self, g, h, G, H, R, Q, **kwargs):
+        # N=None, M=None, rbr=False, callrbr=False, njit=False):
+        N, M = kwargs.get('N', None), kwargs.get('M', None)
+        rbr = kwargs.get('rbr', False)
+        njit = kwargs.get('njit', False)
+        callrbr = kwargs.get('callrbr', False)
+        for k in ('g_pars', 'h_pars', 'G_pars', 'H_pars', 'R_pars', 'Q_pars'):
+            attr = kwargs.get(k, [])
+            setattr(self, h, list(attr))
         N, M = self._infer_mtxsz(N, M, G, H, R, Q)
         self._init_safety_checks(g, h, N, M, rbr)
 
@@ -279,32 +296,32 @@ class EKFFactory:
     def _gfun(self, u, mu):
         """Wrap g with universal function call"""
         args = [u, mu, self.mubar] if self.rbr else [u, mu]
-        return self.g(*args)
+        return self.g(*args, *self.g_pars)
 
     def _hfun(self, mubar):
         """Wrap h with universal function call"""
         args = [mubar, self.zhat] if self.rbr else [mubar]
-        return self.h(*args)
+        return self.h(*args, *self.h_pars)
 
     def _Gfun(self, u, mu):
         """Wrap G with universal function call"""
         args = [u, mu, self.G_t] if self.rbr else [u, mu]
-        return self._mtx_wrapper(self.G, self.G_t, args)
+        return self._mtx_wrapper(self.G, self.G_t, args + self.G_pars)
 
     def _Hfun(self, mubar):
         """Wrap H with universal function call"""
         args = [mubar, self.zhat] if self.rbr else [mubar]
-        return self._mtx_wrapper(self.H, self.H_t, args)
+        return self._mtx_wrapper(self.H, self.H_t, args + self.H_pars)
 
     def _Rfun(self, mu, sigma, u, z):
         """Wrap R with universal function call"""
         args = [mu, sigma, u, z, self.R_t] if self.rbr else [mu, sigma, u, z]
-        return self._mtx_wrapper(self.R, self.R_t, args)
+        return self._mtx_wrapper(self.R, self.R_t, args + self.R_pars)
 
     def _Qfun(self, mu, sigma, u, z):
         """Wrap Q with universal function call"""
         args = [mu, sigma, u, z, self.R_t] if self.rbr else [mu, sigma, u, z]
-        return self._mtx_wrapper(self.Q, self.Q_t, args)
+        return self._mtx_wrapper(self.Q, self.Q_t, args + self.Q_pars)
 
     # ========================================================================
     # Linearization Factory
