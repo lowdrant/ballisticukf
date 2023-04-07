@@ -16,7 +16,7 @@ from helpers import *
 
 # Simulation
 dt = 0.01
-t1 = 10
+t1 = 5
 npts = 3
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 5)  # xdot,ydot,thetadot
@@ -143,7 +143,11 @@ def h(mubar_t):
 
 
 # Observation Jacobian
+# - obs_x[i] = x + mx[i]
+# - obs_y[i] = y + my[i]
 H = zeros((M, N))
+H[::2, 0] = 1
+H[1::2, 0] = 1
 H[:, 5:] = eye(M)
 
 # ===================================================================
