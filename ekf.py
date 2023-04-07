@@ -6,7 +6,7 @@ Choose units (mass, length, time) s.t. m = r = g = I = 1
 """
 from time import time
 
-from numba import njit
+from numba import njit, prange
 from numpy import (arange, arctan2, cos, eye, fill_diagonal, r_, sin, sqrt,
                    zeros)
 from numpy.random import seed
@@ -16,7 +16,7 @@ from helpers import *
 
 # Simulation
 dt = 0.01
-t1 = 1
+t1 = 6.1
 npts = 2
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 5)  # xdot,ydot,thetadot
@@ -90,13 +90,14 @@ def G_rbr(u, mu, G_t):
     for i in range(5, len(G_t), 2):
         G_t[i, i] = cos(dt * thdot)  # dx on dx
         G_t[i, i + 1] = - sin(dt * thdot)  # dx on dy
-        G_t[i, 4] = mu[i] * G_t[i, i + 1] - mu[i + 1] * G[i, i]
+        G_t[i, 4] = mu[i] * G_t[i, i + 1] - mu[i + 1] * G_t[i, i]
         G_t[i, 4] *= dt
     # Marker dy
+    # TODO: take advantage of precomputes in dx
     for i in range(6, len(G_t), 2):
-        G_t[i, i - 1] = cos(dt * thdot)  # dy on dx
-        G_t[i, i + 1] = - sin(dt * thdot)  # dy on dy
-        G_t[i, 4] = mu[i] * G_t[i, i + 1] - mu[i + 1] * G[i, i]
+        G_t[i, i - 1] = sin(dt * thdot)  # dy on dx
+        G_t[i, i] = cos(dt * thdot)  # dy on dy
+        G_t[i, 4] = mu[i - 1] * G_t[i, i] - mu[i] * G_t[i, i - 1]
         G_t[i, 4] *= dt
 
     return G_t
@@ -144,11 +145,11 @@ callrbr = 0
 kwargs = {'rbr': rbr, 'njit': do_njit, 'callrbr': callrbr}
 ekf = EKF(g, h, G, H, R, Q, **kwargs)
 if rbr:
-    ekf = EKF(g_rbr, h_rbr, G, H, R, Q, **kwargs)
+    ekf = EKF(g_rbr, h_rbr, G_rbr, H, R, Q, **kwargs)
 
 # Filtering
 mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
-mu_t[-1] = [0, 0, 0, 0, 0] + list(obs.T[0].flatten())
+mu_t[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
 print('Starting EKF...')
 tref = time()
 seed(0)
