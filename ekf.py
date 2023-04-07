@@ -16,8 +16,8 @@ from helpers import *
 
 # Simulation
 dt = 0.01
-t1 = 6.1
-npts = 2
+t1 = 10
+npts = 3
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 5)  # xdot,ydot,thetadot
 t = arange(0, t1, dt)
@@ -42,16 +42,16 @@ Q = eye(M)
 def g_rbr(u, mu, mubar):
     """state transition function
     INPUTS:
-        xtm1 -- NxM -- N estimates of M states at time t-1.
+        u -- input vector
+        xtm1 -- Mx1 -- M states at time t-1.
                        Format: (x,y,vx,vy,w,dmx0,dmy0,...,dmxN,dmyN)
-    OUTPUTS:
-        xt -- NxM -- N estimates of M states at time t. Format as xtm1
+        xt -- Nx1 -- M states at time t. Format as xtm1
 
     NOTES:
         Model: disk falling due to gravity with makers at some distance and
                angle from CoM.
     """
-    mubar[...] = mu[...]
+    mubar[...] = mu.copy()
     # CoM Motion
     mubar[..., 0] += mu[..., 2] * dt
     mubar[..., 1] += mu[..., 3] * dt
@@ -59,11 +59,15 @@ def g_rbr(u, mu, mubar):
     # Marker Motion
     N = len(mubar.T)
     M = (N - 5) // 2
-    r = sqrt(mubar[..., 5::2]**2 + mubar[..., 6::2]**2)
-    thview = mubar[..., 5:].reshape(mubar.shape[:-1] + (M, 2))
-    th = arctan2(thview.T[0], thview.T[1]).T
-    mubar[..., 5::2] += r * (cos(dt * mubar[..., 4] + th) - cos(th))
-    mubar[..., 6::2] += r * (sin(dt * mubar[..., 4] + th) - sin(th))
+    # -- intermediate memory allocation --
+    mx = mu[..., 5::2]
+    my = mu[..., 6::2]
+    thdot = mubar[..., 4]
+    s = sin(dt * thdot)
+    c = cos(dt * thdot)
+    # -- intermediate memory allocation --
+    mubar[..., 5::2] = mx * c - my * s
+    mubar[..., 6::2] = mx * s + my * c
     return mubar
 
 
@@ -79,26 +83,33 @@ def G_rbr(u, mu, G_t):
         mu -- Nx1 -- estimated state mean
         G_t -- NxN -- return by ref jacobian
     """
-    # Extract common vals as views
-    thdot = mu[4]  # TODO: is this a view?
-    # Const (self-dependence, velocities)
+    # Const values (self-dependence, velocities)
     G_t[...] = 0
     fill_diagonal(G_t, 1)  # mem-efficient identity matrix insert
     G_t[0, 2] = dt  # x depends on vx
     G_t[1, 3] = dt  # y depends on vy
+
+    # -- intermediate memory allocation --
+    mx = mu[..., 5::2]
+    my = mu[..., 6::2]
+    thdot = mu[..., 4]
+    s = sin(dt * thdot)
+    c = cos(dt * thdot)
+    # -- intermediate memory allocation --
+    # TODO: take advantage of precomputes
+
     # Marker dx
     for i in range(5, len(G_t), 2):
-        G_t[i, i] = cos(dt * thdot)  # dx on dx
-        G_t[i, i + 1] = - sin(dt * thdot)  # dx on dy
-        G_t[i, 4] = mu[i] * G_t[i, i + 1] - mu[i + 1] * G_t[i, i]
-        G_t[i, 4] *= dt
+        G_t[i, i] = c  # dx on dx
+        G_t[i, i + 1] = - s  # dx on dy
+    G_t[5::2, 4] = -mx * s - my * c
+    G_t[5::2, 4] *= dt
     # Marker dy
-    # TODO: take advantage of precomputes in dx
     for i in range(6, len(G_t), 2):
-        G_t[i, i - 1] = sin(dt * thdot)  # dy on dx
-        G_t[i, i] = cos(dt * thdot)  # dy on dy
-        G_t[i, 4] = mu[i - 1] * G_t[i, i] - mu[i] * G_t[i, i - 1]
-        G_t[i, 4] *= dt
+        G_t[i, i - 1] = s  # dy on dx
+        G_t[i, i] = c  # dy on dy
+    G_t[6::2, 4] = mx * c - my * s
+    G_t[6::2, 4] *= dt
 
     return G_t
 
