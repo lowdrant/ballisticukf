@@ -214,7 +214,7 @@ class EKFFactory:
         callrbr = kwargs.get('callrbr', False)
         for k in ('g_pars', 'h_pars', 'G_pars', 'H_pars', 'R_pars', 'Q_pars'):
             attr = kwargs.get(k, [])
-            setattr(self, h, list(attr))
+            setattr(self, k, list(attr))
         N, M = self._infer_mtxsz(N, M, G, H, R, Q)
         self._init_safety_checks(g, h, N, M, rbr)
 

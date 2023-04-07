@@ -113,7 +113,7 @@ def h(mubar_t):
     return h_rbr(mubar_t, out)
 
 
-def construct_ekf(M, N, njit=False, Q=None, R=None):
+def construct_ekf(M, N, dt, njit, Q=None, R=None):
     """Construct EKF for falling disk given state space and observation
     space size.
     INPUTS:
@@ -137,7 +137,12 @@ def construct_ekf(M, N, njit=False, Q=None, R=None):
     H[::2, 0] = 1
     H[1::2, 1] = 1
     H[:, 5:] = eye(M)
-    return EKFFactory(g, h, G, H, R, Q, N=N, M=M, njit=njit)
+
+    pardict = {}
+    for k in ('g', 'h', 'H', 'G'):
+        pardict[k + '_args'] = [dt]
+    print(pardict)
+    return EKFFactory(g, h, G, H, R, Q, N=N, M=M, njit=njit, **pardict)
 
 # ===================================================================
 # Unit Test
@@ -158,7 +163,7 @@ if __name__ == '__main__':
     L, M = len(t), 2 * npts
     N = M + 5
 
-    ekf = construct_ekf(M, N, njit=1)
+    ekf = construct_ekf(M, N, dt, 1)
     mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
     sigma_t[-1] = 10
     fill_diagonal(sigma_t[-1, :5, :5], 10)
