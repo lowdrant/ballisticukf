@@ -4,42 +4,14 @@ Run simulation and EKF estimation.
 
 Choose units (mass, length, time) s.t. m = r = g = I = 1
 """
+__all__ = ['construct_ekf']
 from time import time
 
-from numba import njit, prange
-from numpy import (arange, arctan2, cos, eye, fill_diagonal, r_, sin, sqrt,
-                   zeros)
+from numpy import arange, cos, eye, fill_diagonal, r_, sin, zeros
 from numpy.random import seed
 
 from filters import *
 from helpers import *
-
-# Simulation
-dt = 0.01
-t1 = 10
-npts = 3
-q0 = (0, 0, 0)   # x,y,theta
-xi0 = (2, 0, 5)  # xdot,ydot,thetadot
-t = arange(0, t1, dt)
-gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
-
-# Matrices
-L, M = len(t), 2 * npts
-N = M + 5
-# model uncertainty
-R = eye(N) * 0.1
-# R = zeros((N,N))
-# fill_diagonal(R[:5, :5], 10)
-R[4, 4] = 1  # unknown thetadot
-# R[0,5:] = 1
-# R[5:,0] = 1
-R[0, 2] = 1  # x depends on vx
-R[2, 0] = 1
-R[1, 3] = 1  # y depends on vy
-R[3, 1] = 1
-# measurement uncertainty
-Q = eye(M)
-Q[...] = 0
 
 # ===================================================================
 # State Transitions
@@ -141,48 +113,65 @@ def h(mubar_t):
     return h_rbr(mubar_t, out)
 
 
-# Observation Jacobian
-# - obs_x[i] = x + mx[i]
-# - obs_y[i] = y + my[i]
-H = zeros((M, N))
-H[::2, 0] = 1
-H[1::2, 1] = 1
-H[:, 5:] = eye(M)
+def construct_ekf(M, N, njit=False, Q=None, R=None):
+    """Construct EKF for falling disk given state space and observation
+    space size.
+    INPUTS:
+        M -- observation space size
+        N -- state space size
+        njit -- bool, optional -- enable njit optimization, default: False
+        Q -- MxM, optional -- specify Q, see code for default
+        R -- NxN, optional -- specify R, see code for default
+    """
+    if R is None:
+        R = eye(N) * 0.1
+        R[4, 4] = 1  # unknown thetadot
+        R[0, 2] = 1  # x depends on vx
+        R[2, 0] = 1
+        R[1, 3] = 1  # y depends on vy
+        R[3, 1] = 1
+    if Q is None:
+        Q = eye(M)
+        Q[...] = 0
+    H = zeros((M, N))
+    H[::2, 0] = 1
+    H[1::2, 1] = 1
+    H[:, 5:] = eye(M)
+    return EKFFactory(g, h, G, H, R, Q, N=N, M=M, njit=njit)
 
 # ===================================================================
-# Estimation
+# Unit Test
 
-rbr = 1
-do_njit = 1
-callrbr = 1
 
-kwargs = {'rbr': rbr, 'njit': do_njit, 'callrbr': callrbr}
-ekf = EKF(g, h, G, H, R, Q, **kwargs)
-if rbr:
-    ekf = EKF(g_rbr, h_rbr, G_rbr, H, R, Q, **kwargs)
+if __name__ == '__main__':
 
-# Filtering
-mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
-sigma_t[-1] = 10
-fill_diagonal(sigma_t[-1, :5, :5], 10)
-sigma_t[-1, 4, 4] = 100
-mu_t[-1] = [0, 0, 2, 0, 0] + list(obs.T[0].flatten())
-print('Starting EKF...')
-tref = time()
-seed(0)
-if callrbr:
-    for i, _ in enumerate(t):
-        ekf(mu_t[i - 1], sigma_t[i - 1], 0,
-            obs.T[i].flatten(), mu_t[i], sigma_t[i])
-else:
+    # Simulation
+    dt = 0.01
+    t1 = 10
+    npts = 3
+    q0 = (0, 0, 0)   # x,y,theta
+    xi0 = (0, 0, 5)  # xdot,ydot,thetadot
+    t = arange(0, t1, dt)
+    gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
+
+    # Matrices
+    L, M = len(t), 2 * npts
+    N = M + 5
+
+    ekf = construct_ekf(M, N, njit=1)
+    mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
+    sigma_t[-1] = 10
+    fill_diagonal(sigma_t[-1, :5, :5], 10)
+    sigma_t[-1, 4, 4] = 100
+    mu_t[-1] = [0, 0, 2, 0, 0] + list(obs.T[0].flatten())
+    print('Starting EKF...')
+    tref = time()
+    seed(0)
     for i, _ in enumerate(t):
         mu_t[i], sigma_t[i] = ekf(
             mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten())
-print(f'Done! t={time()-tref:.2f}s')
+    print(f'Done! t={time()-tref:.2f}s')
 
-# ===================================================================
-# Validation
-
-est = mu_t
-tru = reconstruct(est, out, obs)
-plots(t, tru, est)
+    est = mu_t
+    tru = reconstruct(est, out, obs)
+    plots(t, tru, est)

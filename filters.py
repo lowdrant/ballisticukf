@@ -1,4 +1,4 @@
-__all__ = ['ParticleFilter', 'EKF']
+__all__ = ['ParticleFilter', 'EKFFactory']
 """
 Implement filters for evaluation in main.py
 """
@@ -114,7 +114,7 @@ def _EKF_matmuls_rbr_njit(sigma, z, R, Q, H, G, mubar, zhat, mu_t, sigma_t):
     return mu_t, sigma_t
 
 
-class EKF:
+class EKFFactory:
     # region
     """EKF implementation for autonomous systems, as described in
     "Probabilistic Robotics" by Sebastian Thrun. Provides indirect support for
