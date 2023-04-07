@@ -16,10 +16,10 @@ from helpers import *
 
 # Simulation
 dt = 0.01
-t1 = 5
-npts = 3
+t1 = 10
+npts = 4
 q0 = (0, 0, 0)   # x,y,theta
-xi0 = (0, 0, 5)  # xdot,ydot,thetadot
+xi0 = (0, 0, 2)  # xdot,ydot,thetadot
 t = arange(0, t1, dt)
 gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
 
@@ -28,11 +28,13 @@ L, M = len(t), 2 * npts
 N = M + 5
 # model uncertainty
 R = eye(N)
-R[5::2, 4] = 1  # marker delta depends on theta_dot
-R[0, 2] = 1  # x depends on vx
-R[1, 3] = 1  # y depends on vy
+R[5::2, 4] = 0.1  # marker delta depends on theta_dot
+# R[0, 2] = 0.1  # x depends on vx
+# R[1, 3] = 0.1  # y depends on vy
+# R[...] = 0
 # measurement uncertainty
 Q = eye(M)
+Q[...] = 0
 
 # ===================================================================
 # State Transitions
@@ -43,7 +45,7 @@ def g_rbr(u, mu, mubar):
     """state transition function
     INPUTS:
         u -- input vector
-        xtm1 -- Mx1 -- M states at time t-1.
+        xtm1 -- Nx1 -- M states at time t-1.
                        Format: (x,y,vx,vy,w,dmx0,dmy0,...,dmxN,dmyN)
         xt -- Nx1 -- M states at time t. Format as xtm1
 
@@ -51,23 +53,22 @@ def g_rbr(u, mu, mubar):
         Model: disk falling due to gravity with makers at some distance and
                angle from CoM.
     """
-    mubar[...] = mu.copy()
+    mubar[...] = 0
     # CoM Motion
-    mubar[..., 0] += mu[..., 2] * dt
-    mubar[..., 1] += mu[..., 3] * dt
-    mubar[..., 3] -= dt
+    mubar[0] = mu[0] + mu[2] * dt
+    mubar[1] = mu[1] + mu[3] * dt
+    mubar[3] = mu[3] - dt
+    mubar[4] = mu[4]
     # Marker Motion
     N = len(mubar.T)
-    M = (N - 5) // 2
+    # - extract views
+    mx, my, thdot = mu[5::2], mu[6::2], mu[4]
     # -- intermediate memory allocation --
-    mx = mu[..., 5::2]
-    my = mu[..., 6::2]
-    thdot = mubar[..., 4]
     s = sin(dt * thdot)
     c = cos(dt * thdot)
     # -- intermediate memory allocation --
-    mubar[..., 5::2] = mx * c - my * s
-    mubar[..., 6::2] = mx * s + my * c
+    mubar[5::2] = mx * c - my * s
+    mubar[6::2] = mx * s + my * c
     return mubar
 
 
@@ -89,27 +90,23 @@ def G_rbr(u, mu, G_t):
     G_t[0, 2] = dt  # x depends on vx
     G_t[1, 3] = dt  # y depends on vy
 
+    # extract consts as views
+    mx = mu[5::2]
+    my = mu[6::2]
+    thdot = mu[4]
     # -- intermediate memory allocation --
-    mx = mu[..., 5::2]
-    my = mu[..., 6::2]
-    thdot = mu[..., 4]
     s = sin(dt * thdot)
     c = cos(dt * thdot)
     # -- intermediate memory allocation --
-    # TODO: take advantage of precomputes
 
     # Marker dx
-    for i in range(5, len(G_t), 2):
-        G_t[i, i] = c  # dx on dx
-        G_t[i, i + 1] = - s  # dx on dy
-    G_t[5::2, 4] = -mx * s - my * c
-    G_t[5::2, 4] *= dt
+    fill_diagonal(G_t[5::2, 5::2], c)  # dx on dx
+    fill_diagonal(G_t[5::2, 6::2], -s)  # dx on dy
+    G_t[5::2, 4] = dt * (-mx * s - my * c)  # dx on thdot
     # Marker dy
-    for i in range(6, len(G_t), 2):
-        G_t[i, i - 1] = s  # dy on dx
-        G_t[i, i] = c  # dy on dy
-    G_t[6::2, 4] = mx * c - my * s
-    G_t[6::2, 4] *= dt
+    fill_diagonal(G_t[6::2, 5::2], s)  # dy on dx
+    fill_diagonal(G_t[6::2, 6::2], c)  # dy on dy
+    G_t[6::2, 4] = dt * (mx * c - my * s)  # dy on thdot
 
     return G_t
 
@@ -122,19 +119,19 @@ def G(u, mu):
 # @njit
 
 
-def h_rbr(mubar_t, out):
+def h_rbr(mubar_t, zhat):
     """state observation function
     INPUTS:
-        mubar_t -- ...NxM -- N estimates of M states at time t.
-                             Format: (x,y,vx,vy,w,mx0,my0,...,mxN,myN)
+        mubar_t -- Mx1 -- M states at time t.
+                          Format: (x,y,vx,vy,w,dmx0,dmy0,...,dmxN,dmyN)
     OUTPUTS:
-        hat_zt -- ...Nx(M-5) -- N estimates of M-5 observations at time t.
-                                Format: (mx0,my0,...,mxN,myN)
+        zhat -- (M-5)x1 -- M-5 observations at time t.
+                           Format: (dmx0,dmy0,...,dmxN,dmyN)
     """
-    out[...] = mubar_t[..., 5:]
-    out[..., 5::2] += mubar_t[..., 0]
-    out[..., 6::2] += mubar_t[..., 1]
-    return out
+    zhat[...] = 0
+    zhat[::2] = mubar_t[5::2] + mubar_t[0]
+    zhat[1::2] = mubar_t[6::2] + mubar_t[1]
+    return zhat
 
 
 def h(mubar_t):
@@ -164,7 +161,7 @@ if rbr:
 
 # Filtering
 mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
-mu_t[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
+mu_t[-1] = [0, 0, 0, 0, 0] + list(obs.T[0].flatten())
 print('Starting EKF...')
 tref = time()
 seed(0)
