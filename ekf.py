@@ -19,7 +19,7 @@ dt = 0.01
 t1 = 10
 npts = 3
 q0 = (0, 0, 0)   # x,y,theta
-xi0 = (-0., 0, 5)  # xdot,ydot,thetadot
+xi0 = (2, 0, 5)  # xdot,ydot,thetadot
 t = arange(0, t1, dt)
 gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
 
@@ -166,7 +166,7 @@ mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
 sigma_t[-1] = 10
 fill_diagonal(sigma_t[-1, :5, :5], 10)
 sigma_t[-1, 4, 4] = 100
-mu_t[-1] = [0, 0, 0, 0, 0] + list(obs.T[0].flatten())
+mu_t[-1] = [0, 0, 2, 0, 0] + list(obs.T[0].flatten())
 print('Starting EKF...')
 tref = time()
 seed(0)
