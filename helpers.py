@@ -183,7 +183,7 @@ def plot_state(t, tru, est, kwest, c, lbls):
     plt.figure(num).clf()
     _, axs = plt.subplots(nrows=5, sharex='all', num=num)
     for i, ax in enumerate(axs):
-        ax.plot(t, tru[:, i], '.-')
+        ax.plot(t, tru[:, i], '--', lw=3)
         ax.plot(t, est[:, i], '.-')
         lbl = lbls[i] if i < 5 else f'm{chr(ord("x") + (i - 5) % 2)}{(i - 5) // 2}'
         ax.set_ylabel(lbl)  # , rotation=0)
@@ -202,7 +202,7 @@ def plot_obs(t, tru, est, kwest, c, lbls):
         k = 5 + i
         tt = tru[:, k] + tru[:, i % 2]
         ee = est[:, k] + est[:, i % 2]
-        ax.plot(t, tt, '.-')
+        ax.plot(t, tt, '--', lw=3)
         ax.plot(t, ee, '.-')
         lbl = f'm{chr(ord("x") + i % 2)}{i // 2}'
         ax.set_ylabel(lbl)  # , rotation=0)
@@ -219,7 +219,7 @@ def plot_est(t, tru, est, kwest, c, lbls):
     _, axe = plt.subplots(nrows=tru.shape[1] - 5, sharex='all', num=num)
     for i, ax in enumerate(axe):
         j = 5 + i
-        ax.plot(t, tru[:, j], '.-')
+        ax.plot(t, tru[:, j], '--', lw=3)
         ax.plot(t, est[:, j], '.-')
         lbl = f'm{chr(ord("x") + i % 2)}{i // 2}'
         ax.set_ylabel(lbl)  # , rotation=0)
@@ -235,7 +235,6 @@ def plot_rb(t, tru, est, kwest, c, lbls):
     for i in range((est.shape[1] - 5) // 2):
         k = 5 + 2 * i
         rtru = sqrt(sum(tru[..., [k, k + 1]]**2, 1))
-        print(tru.shape, rtru.shape, tru[..., [k, k + 1]].shape, k)
 #        rout = sqrt(sum((out[..., [0, 1]] - est[..., i, :].T)**2, -1))
         rest = sqrt(sum((est[..., [k, k + 1]])**2, -1))
  #       ax.plot(t, rout, '--', c=c[i], lw=3)  # ,label=f'out {i})
