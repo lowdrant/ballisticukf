@@ -9,6 +9,7 @@ from time import time
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+from numba import njit
 from numpy import *
 from numpy.random import normal, rand, seed
 
@@ -17,7 +18,7 @@ from helpers import *
 
 # Constants
 dt = 0.01
-t1 = 10
+t1 = 100
 npts = 5
 q0 = (0, 0, 0)   # x,y,theta
 xi0 = (0, 0, 4)  # xdot,ydot,thetadot
@@ -45,17 +46,19 @@ def pxt_rel(xtm1):
         velocity w, a point at radius r will have
         observed velocity vo (vx+w*r*sina, vy+w*r*cosa)
     """
-    loc = array(xtm1, copy=1)
-    loc = loc[newaxis, ...] if loc.ndim == 1 else loc
+    loc = xtm1.copy()
     # flow CoM x,y
     for i in range(2):
         loc[..., i] += dt * loc[..., 2 + i]
     # flow marker x,y
-    for i in range(5, len(xtm1.T), 2):
-        th = arctan2(*loc[..., [i, i + 1]].T).T
-        r = sqrt(sum(loc[..., [i, i + 1]]**2, -1))
-        loc[..., i] += r * (cos(dt * loc[..., 4] + th) - cos(th))
-        loc[..., i + 1] += r * (sin(dt * loc[..., 4] + th) - sin(th))
+    N = len(loc.T)
+    M = (N - 5) // 2
+    r = sqrt(loc[..., 5::2]**2 + loc[..., 6::2]**2)
+    thview = loc[..., 5:].reshape(loc.shape[:-1] + (M, 2))
+    th = arctan2(thview.T[0], thview.T[1]).T
+    thdot = loc[..., [4]]
+    loc[..., 5::2] += r * (cos(dt * thdot + th) - cos(th))
+    loc[..., 6::2] += r * (sin(dt * thdot + th) - sin(th))
     # flow ydot
     loc[..., 3] -= dt
     return normal(loc=loc, scale=scale)
@@ -72,7 +75,7 @@ def pzt_rel(zt, xt):
     NOTES:
         Since zt is a rigid point on body xt, augment xt with RBT to zt.
         The particle filter renormalizes the probability of the particles,
-        so the output of this function doesn't need to cleanly integrate to 
+        so the output of this function doesn't need to cleanly integrate to
         1. This lets us return 1/(1+err), where `err` is the Euclidean
         distance between the observed marker and its predicted location by the
         RBTs. The form of the function makes low errors preferred while
@@ -114,4 +117,4 @@ print(f'Done! t={time()-tref:.2f}s')
 
 est = mean(Xt, 1)
 tru = reconstruct(est, out, obs)
-plots(t, tru, est)
+# plots(t, tru, est)
