@@ -58,8 +58,11 @@ def _run_filter(args, obs):
         raise NotImplementedError('UKF tbd')
         filt = construct_ukf(M, N, args)
     elif fstr == 'kf':
-        raise NotImplementedError('KF tbd')
-        filt = construct_kf(M, N, args)
+        linpt = [0, 0, 0, 0, 0]
+        if args.linpt is not None:
+            linpt = [float(v) for v in args.linpt.replace(' ', '').split(',')]
+        assert len(linpt) == 5, 'only 5 states'
+        filt = construct_kf(M, N, args.dt, linpt)
     elif fstr == 'pf':
         scale = [0.1, 0.1, 0.1, 0.1, 1] + [0.01] * M
         if args.scale is not None:
@@ -111,6 +114,8 @@ parser.add_argument('--p', type=int, default=100,
                     help='(Particle Filter only) number of particles; default: 100')
 parser.add_argument('--scale', type=str, default=None,
                     help='(Particle Filter only) noise for prediction step, comma-separated: (x,y,vx,vy,w, mx_0,my_0,...)')
+parser.add_argument('--linpt', type=str, default=None,
+                    help='(KF only) state to linearize about, comma-separated:(x,vx,y,vy,w)')
 if __name__ == '__main__':
     args = parser.parse_args()
     t, simout, obs = _run_sim(args)
