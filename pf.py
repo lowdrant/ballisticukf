@@ -1,16 +1,18 @@
+__all__ = ['pxt', 'pzt', 'construct_pf']
 from itertools import combinations
+from time import time
 
 from numpy import *
 from numpy.random import normal
 
-from filters import ParticleFilter
+from filters import ParticleFilterFactory
 from helpers import *
 
 # ===================================================================
 # Priors
 
 
-def pxt(xtm1, dt, scale):
+def pxt(xtm1, u, dt, scale):
     """generate probability cloud of current state given prev state
     WARN: for relative marker positions
     INPUTS:
@@ -85,15 +87,15 @@ def construct_pf(M, N, dt, scale):
         dt -- time step of observations
         scale -- N tuple of variances for pxt forward flowing
     """
-    pardict = {'pxt_args': [dt, scale]}
-    return ParticleFilter(pxt, pzt, **pardict)
+    pardict = {'pxt_pars': [dt, scale], 'vec': True}
+    return ParticleFilterFactory(pxt, pzt, **pardict)
 
 # ===================================================================
 # Unit Test
 
 
 if __name__ == '__main__':
-
+    raise NotImplementedError('TODO')
     # Simulation
     dt = 0.01
     t1 = 10
@@ -107,20 +109,18 @@ if __name__ == '__main__':
     L, M = len(t), 2 * npts
     N = M + 5
 
-    ekf = construct_ekf(M, N, dt, 1)
-    mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
-    sigma_t[-1] = 10
-    fill_diagonal(sigma_t[-1, :5, :5], 10)
-    sigma_t[-1, 4, 4] = 100
-    mu_t[-1] = [0, 0, 2, 0, 0] + list(obs.T[0].flatten())
-    print('Starting EKF...')
+    scale = [0.1, 0.1, 0.1, 0.1, 1] + [0.01] * npts
+
+    pf = construct_pf(M, N, dt)
+    X_t = zeros((L, P, N))
+    # X_t[-1] = [0, 0, 2, 0, 0] + list(obs.T[0].flatten())
+    print('Starting particle filter...')
     tref = time()
     seed(0)
     for i, _ in enumerate(t):
-        mu_t[i], sigma_t[i] = ekf(
-            mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten())
+        X_t[i] = pf(X_t[i - 1], 0, obs.T[i].flatten())
     print(f'Done! t={time()-tref:.2f}s')
 
-    est = mu_t
-    tru = reconstruct(est, out, obs)
-    plots(t, tru, est)
+    # est = mu_t
+    # tru = reconstruct(est, out, obs)
+    # plots(t, tru, est)

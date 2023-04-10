@@ -79,7 +79,7 @@ def _run_filter(args, obs):
         tref = time()
         seed(0)
         for i, _ in enumerate(obs.T):
-            X_t[i] = filt(X_t[i - 1], obs.T[i].flatten())
+            X_t[i] = filt(X_t[i - 1], 0, obs.T[i].flatten())
         print(f'Done! t={time()-tref:.2f}s')
         return X_t.mean(1)
 

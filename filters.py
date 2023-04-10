@@ -1,4 +1,4 @@
-__all__ = ['ParticleFilter', 'EKFFactory']
+__all__ = ['ParticleFilterFactory', 'EKFFactory']
 """
 Implement filters for evaluation in main.py
 """
@@ -10,63 +10,83 @@ from numpy.linalg import pinv
 from numpy.random import choice
 
 
-class ParticleFilter():
-    """Implements unforced particle filter as described in Thrun Chp4 p98.
+class ParticleFilterFactory:
+    # region
+    """Particle Filter implementation for autonomous systems, as described in
+    "Probabilistic Robotics" by Sebastian Thrun. Provides indirect support for
+    nonautonomous systems.
 
     INPUTS:
-        pxt -- callable->N -- vectorized! samples current state given prior state
-        pzt -- callable->float -- vectorized! returns probability of observations
-                                  zt given state xt
+        pxt -- callable -- (X0,u,z)->X1 samples current state given prior state
+        pzt -- callable -- (X1,z)->w returns probability of observations zt given state xt
 
-    TODO: document callable args
+        pxt_pars -- iterable, optional, default:[] -- additonal args for pxt
+        pzt_pars -- iterable, optional, default:[] -- additonal args for pzt
 
-    USAGE:
-    >>> pxt = # def p(x_t | u_t, x_{t-1})
-    >>> pzt = # def p(z_t | x_t)
-    >>> kwargs={'pzt_args': ..., 'pxt_args': dt}
-    >>> pf = ParticleFilter(pxt, pzt, **kwargs)
-    >>> Xtm1 = # initialize particles
-    >>> Xt = zeros((len(observations), len(Xtm1)))
-    >>> for i, zt in enumerate(observations):
-    >>>     Xt[i] = pf(Xtm1, zt)
+        vec -- bool, optional, default:False -- enable vectorized pxt,pzt calls
+        rbr -- bool, optional, default:False -- enable return-by-reference pxt,pzt calls
+        dbg -- bool, optional, default:False -- log prediction and resampling arrays
+
+    EXAMPLES:
+        Run a single particle filter step:
+        >>> pf = ParticleFilterFactory(pxt, pzt)
+        >>> Xt1 = pf(Xt0, ut0, zt0)
+
+        Run particle filter when prediction depends on timestep:
+        >>> # def pxt(Xtm1, u, dt)
+        >>> kwargs = {'pxt_pars': dt)
+        >>> pf = ParticleFilterFactory(pxt, pzt, **kwargs)
+
+    NOTES:
+        Probability function: resampling internally normalizes the
+                              probabilities, so pzt doesn't need to integrate
+                              to 1.
+        return-by-reference: Doesn't work as well as it should. Currently,
+                             the indexing in the resampling step forces an
+                             array copy anyway :( TODO
+
+    REFERENCES:
+        Thrun, Probabilistic Robotics, Chp 4.3.
+        Thrun, Probabilistic Robotics, Table 4.3.
     """
+    # endregion
 
     def __init__(self, pxt, pzt, **kwargs):
-        # sanitize
         assert callable(pxt), f'pxt must be callable, not {type(pxt)}'
         assert callable(pzt), f'pzt must be callable, not {type(pzt)}'
-        # setup
         self.pxt = pxt
         self.pzt = pzt
-        self.pxt_args = list(kwargs.get('pxt_args', []))
-        self.pzt_args = list(kwargs.get('pzt_args', []))
+        self.pxt_pars = list(kwargs.get('pxt_pars', []))
+        self.pzt_pars = list(kwargs.get('pzt_pars', []))
+
+        self.P = kwargs.get('P',None)
+        self.N =kwargs.get('N',None)
 
         self.dbg = kwargs.get('debug', False)
         self.Xbart_dbg = []
         self.Xt_dbg = []
         self.ii_dbg = []
 
-    def __call__(self, Xtm1, zt):
+        vec = kwargs.get('vec', False)
+        rbr = kwargs.get('rbr', False)
+        self._flow = self._flow_factory(vec, rbr)
+
+    def __call__(self, Xtm1, ut, zt, Xt=None):
         """run particle filter
         INPUTS:
             Xtm1 -- PxN -- P particles of length-N state vectors at time t-1
+            ut -- input at time t
             zt -- K -- observations at time t
+            Xt -- optional, PxN -- return-by-reference output
         OUTPUTS:
-            Xt -- PxN -- resampled particles at time t
+            Xt -- PxN -- predicted particles at time t
         """
         Xtm1 = asarray(Xtm1)
-        Xbart = self._flow_particles(Xtm1, zt)
+        Xbart = self._flow(Xtm1, ut, zt)
         if self.dbg:
-            self.Xbart_dbg.append(Xbart)
+            self.Xbart_dbg.append(Xbart.copy())
         Xt = self._resample(Xbart)
         return Xt
-
-    def _flow_particles(self, Xtm1, zt):
-        out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
-        out[:, :-1] = self.pxt(Xtm1, *self.pxt_args)  # x_t^{[m]}
-        out[:, -1] = self.pzt(zt, out[:, :-1], *self.pzt_args)  # w_t^{[m]}
-        return out
-        # TODO: support return by reference
 
     def _resample(self, Xbart):
         """resampling step"""
@@ -74,8 +94,47 @@ class ParticleFilter():
         wt = Xbart[:, -1]
         ii = choice(range(P), size=P, p=wt / wt.sum())
         if self.dbg:
-            self.ii_dbg.append(ii)
+            self.ii_dbg.append(ii.copy())
+        # TODO: this is advanced indexing, and so returns a copy
         return Xbart[ii, :-1]
+
+    # ========================================================================
+    # Prediction Step Factory
+    #
+    # We can iterate, vectorize, and return by reference
+    #
+
+    def _flow_factory(self, vec, rbr):
+        if vec and rbr:
+            return self._flow_vec_rbr
+        elif vec:
+            return self._flow_vec
+        elif rbr:
+            return self._flow_iter_rbr
+        return self._flow_iter
+
+    def _flow_iter(self, Xtm1, ut, zt):
+        """Iterative prediction calculation. Returns directly."""
+        out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
+        return self._flow_iter_rbr(Xtm1, ut, zt, out)
+
+    def _flow_iter_rbr(self, Xtm1, ut, zt, out):
+        """Iterative prediction calculation. Returns-by-reference."""
+        for i in range(len(out)):
+            out[i, :-1] = self.pxt(Xtm1[i], ut, *self.pxt_pars)  # x_t^{[m]}
+            out[i, -1] = self.pzt(zt, out[i, :-1], *self.pzt_pars)  # w_t^{[m]}
+        return out
+
+    def _flow_vec(self, Xtm1, ut, zt):
+        """Vectorized prediction calculation. Returns directly."""
+        out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
+        return self._flow_vec_rbr(Xtm1, ut, zt, out)
+
+    def _flow_vec_rbr(self, Xtm1, ut, zt, out):
+        """Vectorized prediction calculation. Returns-by-reference."""
+        out[:, :-1] = self.pxt(Xtm1, ut, *self.pxt_pars)  # x_t^{[m]}
+        out[:, -1] = self.pzt(zt, out[:, :-1], *self.pzt_pars)  # w_t^{[m]}
+        return out
 
 
 def _EKF_matmuls(sigma, z, R, Q, H, G, mubar, zhat):
