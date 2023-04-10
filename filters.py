@@ -96,12 +96,9 @@ class ParticleFilterFactory:
 
         if (P is not None) and (N is not None):
             self.out = zeros((P, N + 1))
-        elif (P is None) ^ (N is None):
+        elif ((P is None) ^ (N is None)) and rbr:
             warn(
                 f'Return-by-reference will fail. Filter size incomplete:P={P},N={N}')
-
-        if rbr:
-            raise NotImplementedError
 
         self._flow = self._flow_factory(vec, rbr)
 
@@ -118,15 +115,16 @@ class ParticleFilterFactory:
         out = self._flow(Xtm1, ut, zt)
         if self.dbg:
             self.Xbart_dbg.append(out.copy())
-        Xt = self._resample(out[:, :-1], out[:, -1])
-        return Xt
+        return self._resample(out[:, :-1], out[:, -1])
 
     def _resample(self, Xbart, wt):
         """resampling step"""
         P = len(Xbart)
+        print(wt)
         ii = choice(range(P), size=P, p=wt / wt.sum())
         if self.dbg:
             self.ii_dbg.append(ii.copy())
+            self.wt_dbg.append(wt.copy())
         return Xbart[ii]
 
     # ========================================================================
@@ -146,31 +144,34 @@ class ParticleFilterFactory:
 
     def _flow_iter(self, Xtm1, ut, zt):
         """Iterative prediction calculation. Returns directly."""
-        out = zeros((Xtm1.shape[0], Xtm1.shape[1]) + 1)
-        for i in range(len(self.out)):
-            out[i, :-1] = self.pxt(Xtm1[i], ut, *self.pxt_pars)  # x_t^{[m]}
-            out[i, -1] = self.pzt(zt, out[i, :-1], *self.pzt_pars)  # w_t^{[m]}
+        out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
+        for i in range(len(out)):
+            out[i, :-1] = self.pxt(Xtm1[i], ut, *self.pxt_pars)
+            out[i, -1] = self.pzt(zt, out[i, :-1], *self.pzt_pars)
         return out
 
-    def _flow_iter_rbr(self, Xtm1, ut, zt, out):
+    def _flow_iter_rbr(self, Xtm1, ut, zt):
         """Iterative prediction calculation. Returns-by-reference."""
-        for i in range(len(out)):
-            self.pxt(Xtm1[i], ut, out[i, :-1], *self.pxt_pars)  # x_t^{[m]}
-            self.pzt(zt, out[i, :-1], out[:, -1], *self.pzt_pars)  # w_t^{[m]}
-        return out
+        self.out[...] = 0
+        for i in range(len(self.out)):
+            self.pxt(Xtm1[i], ut, self.out[i, :-1], *self.pxt_pars)
+            self.out[i, -1] = self.pzt(zt, self.out[i, :-1],
+                                       self.out[i, -1], *self.pzt_pars)
+        return self.out
 
     def _flow_vec(self, Xtm1, ut, zt):
         """Vectorized prediction calculation. Returns directly."""
         out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
-        out[:, :-1] = self.pxt(Xtm1, ut, *self.pxt_pars)  # x_t^{[m]}
-        out[:, -1] = self.pzt(zt, out[:, :-1], *self.pzt_pars)  # w_t^{[m]}
+        out[:, :-1] = self.pxt(Xtm1, ut, *self.pxt_pars)
+        out[:, -1] = self.pzt(zt, out[:, :-1], *self.pzt_pars)
         return out
 
-    def _flow_vec_rbr(self, Xtm1, ut, zt, out):
+    def _flow_vec_rbr(self, Xtm1, ut, zt):
         """Vectorized prediction calculation. Returns-by-reference."""
-        self.pxt(Xtm1, ut, out[:, :-1], *self.pxt_pars)  # x_t^{[m]}
-        self.pzt(zt, out[:, :-1], out[:, -1], *self.pzt_pars)  # w_t^{[m]}
-        return out
+        self.out[...] = 0
+        self.pxt(Xtm1, ut, self.out[:, :-1], *self.pxt_pars)
+        self.pzt(zt, self.out[:, :-1], self.out[:, -1], *self.pzt_pars)
+        return self.out
 
 
 def _EKF_matmuls(sigma, z, R, Q, H, G, mubar, zhat):

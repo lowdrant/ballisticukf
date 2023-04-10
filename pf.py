@@ -3,7 +3,7 @@ from itertools import combinations
 from time import time
 
 from numpy import *
-from numpy.random import normal
+from numpy.random import normal, seed
 
 from filters import ParticleFilterFactory
 from helpers import *
@@ -12,7 +12,7 @@ from helpers import *
 # Priors
 
 
-def pxt(xtm1, u, dt, scale):
+def pxt_rbr(xtm1, u, out, dt, scale):
     """generate probability cloud of current state given prev state
     WARN: for relative marker positions
     INPUTS:
@@ -40,15 +40,23 @@ def pxt(xtm1, u, dt, scale):
     loc[..., 6::2] += r * (sin(dt * thdot + th) - sin(th))
     # flow ydot
     loc[..., 3] -= dt
-    return normal(loc=loc, scale=scale)
+
+    out[...] = normal(loc=loc, scale=scale)
+    return out
 
 
-def pzt(zt, xt):
+def pxt(xtm1, u, dt, scale):
+    """direct-return state transition probability"""
+    out = zeros_like(xtm1)
+    return pxt_rbr(xtm1, u, out, dt, scale)
+
+
+def pzt_rbr(zt, xt, out):
     """"Probability" that observations zt came from state xt. Implemented as a
     cost function of RBT prediction error of zt.
     WARN: for relative marker positions
     INPUTS:
-        zt -- PxM -- P observations of M observables quantities
+        zt -- Mx1 -- observation of M observables quantities
         xt -- PxN -- P estimates of N states
 
     NOTES:
@@ -60,22 +68,34 @@ def pzt(zt, xt):
         RBTs. The form of the function makes low errors preferred while
         avoiding division by 0/numeric instability.
     """
-    xt, zt = asarray(xt), asarray(zt)
-    xt = xt[newaxis, :] if xt.ndim == 1 else xt
-    zt = zt[newaxis, :] if zt.ndim == 1 else zt
-    err = zeros(len(xt))
-    # coordinate error
+    if not isscalar(out):
+        out[...] = 0
     n = len(xt.T) - 5
     d = zt[...] - xt[..., [0, 1] * (n // 2)] - xt[..., 5:n + 5]
-    err += sum(d**2, -1)
+    out += sum(d**2, -1)
     # pairwise distance error
     pairs = list(combinations(range(0, len(xt.T) - 5, 2), 2))
     for i1, i2 in pairs:
         k1, k2 = i1 + 5, i2 + 5
         dz = (zt[..., [i1, i1 + 1]] - zt[..., [i2, i2 + 1]])**2
         dx = (xt[..., [k1, k1 + 1]] - xt[..., [k2, k2 + 1]])**2
-        err += sum((dz - dx)**2, -1)
-    return 1 / (1 + 1000 * err)
+        out += sum((dz - dx)**2, -1)
+
+    out *= 1000
+    out += 1
+    if not isscalar(out):
+        out[...] = 1 / out
+    else:
+        out = 1 / out
+    return out
+
+
+def pzt(zt, xt):
+    """direct-return observation probability"""
+    out = zeros(len(xt))
+    if xt.ndim == 1:
+        out = 0
+    return pzt_rbr(zt, xt, out)
 
 
 def construct_pf(M, N, dt, scale):
@@ -95,7 +115,7 @@ def construct_pf(M, N, dt, scale):
 
 
 if __name__ == '__main__':
-    raise NotImplementedError('TODO')
+    # raise NotImplementedError('TODO')
     # Simulation
     dt = 0.01
     t1 = 10
@@ -108,10 +128,15 @@ if __name__ == '__main__':
     # Matrices
     L, M = len(t), 2 * npts
     N = M + 5
+    P = 10
+    scale = [0.1, 0.1, 0.1, 0.1, 1] + [0.01] * M
 
-    scale = [0.1, 0.1, 0.1, 0.1, 1] + [0.01] * npts
-
-    pf = construct_pf(M, N, dt)
+    rbr = 0
+    vec = 0
+    pf = ParticleFilterFactory(pxt, pzt, pxt_pars=[dt, scale], vec=vec)
+    if rbr:
+        pf = ParticleFilterFactory(pxt_rbr, pzt_rbr, pxt_pars=[
+                                   dt, scale], vec=vec, P=P, N=N, rbr=rbr)
     X_t = zeros((L, P, N))
     # X_t[-1] = [0, 0, 2, 0, 0] + list(obs.T[0].flatten())
     print('Starting particle filter...')
