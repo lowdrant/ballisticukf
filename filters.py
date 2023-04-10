@@ -163,7 +163,10 @@ class EKFFactory:
     EXAMPLES:
         Run a single EKF step:
         >>> ekf = EKF(g,h,G,H,R,Q)
-        >>> mu1, sigma1 = ekf(mu0, sigma0, observation0)
+        >>> mu1, sigma1 = ekf(mu0, sigma0, u0, observation0)
+
+        Run EKF on unforced system:
+        >>> mu1, sigma1 = ekf(mu0, sigma0, 0, observation0)
 
         Configure to use njit-optimized matrix operations:
         >>> ekf = EKF(g,h,G,H,R,Q, njit=True)
@@ -235,9 +238,15 @@ class EKFFactory:
         self.H = H if callable(H) else asarray(H)
         self.R = R if callable(R) else asarray(R)
         self.Q = Q if callable(Q) else asarray(Q)
-        self.mubar, self.zhat = zeros(N), zeros(M)
-        self.G_t, self.H_t = zeros((N, N)), zeros((M, N))
-        self.R_t, self.Q_t = zeros((N, N)), zeros((M, M))
+
+        self.mubar, self.zhat, self.G_t, self.H_t = None, None, None, None
+        self.R_t, self.Q_t = None, None
+        if (N is None) or (M is None):
+            warn('Unable to infer matrix size. Return be reference will fail')
+        else:
+            self.mubar, self.zhat = zeros(N), zeros(M)
+            self.G_t, self.H_t = zeros((N, N)), zeros((M, N))
+            self.R_t, self.Q_t = zeros((N, N)), zeros((M, M))
 
         self.g, self.h, self.rbr = g, h, rbr
         self._matmuls = self._factory_matmuls(callrbr, njit)
@@ -302,6 +311,8 @@ class EKFFactory:
             args -- arguments `obj` would take if `obj` is callable
         """
         if not callable(obj):
+            if tgt is None:
+                return obj.view(obj.dtype)
             tgt[...] = obj.view(obj.dtype)
             return tgt
         return obj(*args)
