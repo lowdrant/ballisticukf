@@ -58,13 +58,12 @@ def _run_filter(args, obs):
     if fstr == 'ekf':
         filt = construct_ekf(M, N, args.dt, args.njit)
     elif fstr == 'ukf':
-        raise NotImplementedError('UKF tbf')
+        raise NotImplementedError('UKF tbd')
         filt = construct_ukf(M, N, args)
     elif fstr == 'kf':
-        raise NotImplementedError('KF tbf')
+        raise NotImplementedError('KF tbd')
         filt = construct_kf(M, N, args)
     elif fstr == 'pf':
-        raise NotImplementedError('still CLI testing EKF')
         scale = [0.1, 0.1, 0.1, 0.1, 1] + [0.01] * M
         if args.scale is not None:
             scale = [float(v) for v in args.scale.replace(' ', '').split(',')]
@@ -74,15 +73,15 @@ def _run_filter(args, obs):
 
     # Particle Filter has unique call signature
     if fstr == 'pf':
-        P = args.particles
-        X_t = zeros(L, P, N)
+        P = args.p
+        X_t = zeros((L, P, N))
         print(f'Starting particle filter...')
         tref = time()
         seed(0)
         for i, _ in enumerate(obs.T):
             X_t[i] = filt(X_t[i - 1], obs.T[i].flatten())
         print(f'Done! t={time()-tref:.2f}s')
-        return X_t.mean(0)
+        return X_t.mean(1)
 
     # KFs all have same call signature
     mu_t = zeros((L, N))
@@ -111,10 +110,10 @@ parser.add_argument('--x0', type=str, default='0,0,0,0,10',
 parser.add_argument('--no-plot', action='store_true', help='suppress plotting')
 parser.add_argument('--njit', action='store_true',
                     help='(EKF only) enable njit; default:False')
-# parser.add_argument('--particles', type=int,
-#                     help='number of particles for Particle Filter')
-# parser.add_argument('--scale', type=str, default=None,
-#                     help='(particle filter) resampling variances of state vector elements, comma-separated')
+parser.add_argument('--p', type=int, default=100,
+                    help='(Particle Filter only) number of particles; default: 100')
+parser.add_argument('--scale', type=str, default=None,
+                    help='(Particle Filter only) noise for prediction step, comma-separated: (x,y,vx,vy,w, mx_0,my_0,...)')
 if __name__ == '__main__':
     args = parser.parse_args()
     t, simout, obs = _run_sim(args)

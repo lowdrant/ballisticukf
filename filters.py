@@ -18,25 +18,30 @@ class ParticleFilter():
         pzt -- callable->float -- vectorized! returns probability of observations
                                   zt given state xt
 
+    TODO: document callable args
+
     USAGE:
     >>> pxt = # def p(x_t | u_t, x_{t-1})
     >>> pzt = # def p(z_t | x_t)
-    >>> pf = ParticleFilter(pxt,pzt)
+    >>> kwargs={'pzt_args': ..., 'pxt_args': dt}
+    >>> pf = ParticleFilter(pxt, pzt, **kwargs)
     >>> Xtm1 = # initialize particles
     >>> Xt = zeros((len(observations), len(Xtm1)))
     >>> for i, zt in enumerate(observations):
     >>>     Xt[i] = pf(Xtm1, zt)
     """
 
-    def __init__(self, pxt, pzt, dbg=False):
+    def __init__(self, pxt, pzt, **kwargs):
         # sanitize
         assert callable(pxt), f'pxt must be callable, not {type(pxt)}'
         assert callable(pzt), f'pzt must be callable, not {type(pzt)}'
         # setup
         self.pxt = pxt
         self.pzt = pzt
+        self.pxt_args = list(kwargs.get('pxt_args', []))
+        self.pzt_args = list(kwargs.get('pzt_args', []))
 
-        self.dbg = dbg
+        self.dbg = kwargs.get('debug', False)
         self.Xbart_dbg = []
         self.Xt_dbg = []
         self.ii_dbg = []
@@ -44,10 +49,10 @@ class ParticleFilter():
     def __call__(self, Xtm1, zt):
         """run particle filter
         INPUTS:
-            Xtm1 -- MxN -- M particles of length-N state vectors at time t-1
+            Xtm1 -- PxN -- P particles of length-N state vectors at time t-1
             zt -- K -- observations at time t
         OUTPUTS:
-            Xt -- MxN -- resampled particles at time t
+            Xt -- PxN -- resampled particles at time t
         """
         Xtm1 = asarray(Xtm1)
         Xbart = self._flow_particles(Xtm1, zt)
@@ -58,15 +63,16 @@ class ParticleFilter():
 
     def _flow_particles(self, Xtm1, zt):
         out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
-        out[:, :-1] = self.pxt(Xtm1)  # x_t^{[m]}
-        out[:, -1] = self.pzt(zt, out[:, :-1])  # w_t^{[m]}
+        out[:, :-1] = self.pxt(Xtm1, *self.pxt_args)  # x_t^{[m]}
+        out[:, -1] = self.pzt(zt, out[:, :-1], *self.pzt_args)  # w_t^{[m]}
         return out
+        # TODO: support return by reference
 
     def _resample(self, Xbart):
         """resampling step"""
-        M = len(Xbart)
+        P = len(Xbart)
         wt = Xbart[:, -1]
-        ii = choice(range(M), size=M, p=wt / wt.sum())
+        ii = choice(range(P), size=P, p=wt / wt.sum())
         if self.dbg:
             self.ii_dbg.append(ii)
         return Xbart[ii, :-1]
@@ -125,9 +131,10 @@ class EKFFactory:
         2. return-by-reference callables (g, h, matrices)
            - if used, ALL callables must return by reference
            - return-by-reference MUST be through 3rd argument
-        3. inferring matrix sizes for return-by-reference callables
+        3. inferring matrix sizes for memory preallocation
         4. return-by-reference estimation
         5. njit-optimized matrix operations
+        6. additional (constant, user-supplied) parameters passed to callables
 
     Indirectly supports:
         1. Nonautonomous systems via direct attribute access (see Examples)
