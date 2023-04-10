@@ -16,20 +16,42 @@ class ParticleFilterFactory:
     "Probabilistic Robotics" by Sebastian Thrun. Provides indirect support for
     nonautonomous systems.
 
-    Since the resampling forces a memory copy, this does not support
+    Directly supports:
+        1. vectorized callables (pxt,pzt)
+        2. return-by-reference callables (g, h, matrices)
+           - if used, ALL callables must return by reference
+           - return-by-reference MUST be through 3rd argument
+        3. additional (user-supplied) parameters passed to callables
 
-    # TODO: how support return-by-ref here
+    Indirectly supports:
+        1. Nonautonomous systems via direct attribute access (see Examples)
+        2. Changing call signatures via subclassing (see Notes)
 
-    INPUTS:
+    REQUIRED INPUTS:
         pxt -- callable -- (X0,u,z)->X1 samples current state given prior state
         pzt -- callable -- (X1,z)->w returns probability of observations zt given state xt
 
+    OPTIONAL INPUTS:
+        vec -- bool, optional, default:False -- enable vectorized pxt,pzt calls
         pxt_pars -- iterable, optional, default:[] -- additonal args for pxt
         pzt_pars -- iterable, optional, default:[] -- additonal args for pzt
-
-        vec -- bool, optional, default:False -- enable vectorized pxt,pzt calls
+        P -- int, optional -- required for `rbr`; number of particles in filter
+        N -- int, optional -- required for `rbr`; state space size
         rbr -- bool, optional, default:False -- enable return-by-reference pxt,pzt calls
         dbg -- bool, optional, default:False -- log prediction and resampling arrays
+
+    USEFUL ATTRIBUTES:
+        pxt_pars/pzt_pars -- Arguments passed to pxt (pzt). Change this to
+                             change the extra parameters passed to pxt (pzt).
+        Xbart_dbg -- List of predicted particles before resampling. Only
+                     populated if `dbg=True`. List is in chronological order
+                     (it is appended to during the particle filter call)
+        w_dbg -- List of predicted particle probabilities before resampling.
+                 Only populated if `dbg=True`. List is in chronological order
+                 (it is appended to during the particle filter call)
+        ii_dbg -- List of the resampling indices that turned Xbar into X. Only
+                  populated if `dbg=True`. List is in chronological order
+                  (it is appended to during the particle filter call)
 
     EXAMPLES:
         Run a single particle filter step:
@@ -58,15 +80,33 @@ class ParticleFilterFactory:
         >>> # t = arange(0,tf,dt)
         >>> for i, ti in enumerate(t):
         >>>     Xt[i] = pf(Xt[i-1], u[i], z[i])
-        >>>     pf.pxt_pars = [ti]  # update args to transition callable
+        >>>     pf.pxt_pars = [ti]  # arg update -- ENSURE iterable
 
     NOTES:
-        Probability function: resampling internally normalizes the
-                              probabilities, so pzt doesn't need to integrate
-                              to 1.
-        return-by-reference: The resampling forces at least one array copy,
-                             so this doesn't work as well as I might like.
+        pzt:
+            The internal resampling methods normalizes the probabilities by
+            necessity (numpy.random.choice), so pzt doesn't need to integrate
+            to 1.
 
+        Return-by-Reference Function Calls:
+            THIRD (3rd) function arg must be return-by-reference variable.
+            Also, ALL callables must be return by reference if this option is
+            used. Since it is not possible to tell if a function returns by
+            reference, I did not provide an rbr flag for each possible
+            callable.
+
+        Return-by-Reference for gGining Speed:
+            Currently impossible to fully avoid runtime memory allocation.
+            Also, probably only worth it if your arrays are MASSIVE.
+            The internal resampling method forces at least one array copy,
+            since we're indexing an array with a bunch of indicies.
+
+        Return-by-Reference and Non-vectorized callables:
+            Observation probability functions will probably behave weirdly
+            if you return-by-reference but did NOT vectorize. This a function
+            of the math: pzt returns one number per particle, so when
+            iterating over the particles, each pzt call returns a single
+            number. Single numbers don't return-by-reference in python.
 
     REFERENCES:
         Thrun, Probabilistic Robotics, Chp 4.3.
@@ -75,6 +115,7 @@ class ParticleFilterFactory:
     # endregion
 
     def __init__(self, pxt, pzt, **kwargs):
+        # basics
         assert callable(pxt), f'pxt must be callable, not {type(pxt)}'
         assert callable(pzt), f'pzt must be callable, not {type(pzt)}'
         self.pxt = pxt
@@ -82,24 +123,23 @@ class ParticleFilterFactory:
         self.pxt_pars = list(kwargs.get('pxt_pars', []))
         self.pzt_pars = list(kwargs.get('pzt_pars', []))
 
+        # debugging
         self.dbg = kwargs.get('debug', False)
         self.Xbart_dbg = []
         self.ii_dbg = []
         self.wt_dbg = []
 
-        self.out = None
-
+        # configuration
         vec = kwargs.get('vec', False)
         rbr = kwargs.get('rbr', False)
         P = kwargs.get('P', None)
         N = kwargs.get('N', None)
-
+        self.out = None
         if (P is not None) and (N is not None):
             self.out = zeros((P, N + 1))
-        elif ((P is None) ^ (N is None)) and rbr:
-            warn(
-                f'Return-by-reference will fail. Filter size incomplete:P={P},N={N}')
-
+        elif rbr:
+            raise RuntimeError(
+                f'Filter size incomplete:P={P},N={N} and rbr True')
         self._flow = self._flow_factory(vec, rbr)
 
     def __call__(self, Xtm1, ut, zt):
@@ -120,12 +160,13 @@ class ParticleFilterFactory:
     def _resample(self, Xbart, wt):
         """resampling step"""
         P = len(Xbart)
-        print(wt)
-        ii = choice(range(P), size=P, p=wt / wt.sum())
+        ii = tuple(choice(range(P), size=P, p=wt / wt.sum()))
+        # indexing with tuples is sometimes better for memory
+        # - see the numpy indexing doc
         if self.dbg:
             self.ii_dbg.append(ii.copy())
             self.wt_dbg.append(wt.copy())
-        return Xbart[ii]
+        return Xbart[ii, :]
 
     # ========================================================================
     # Prediction Step Factory
@@ -319,7 +360,6 @@ class EKFFactory:
     # endregion
 
     def __init__(self, g, h, G, H, R, Q, **kwargs):
-        # N=None, M=None, rbr=False, callrbr=False, njit=False):
         N, M = kwargs.get('N', None), kwargs.get('M', None)
         rbr = kwargs.get('rbr', False)
         njit = kwargs.get('njit', False)
