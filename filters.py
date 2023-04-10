@@ -16,6 +16,10 @@ class ParticleFilterFactory:
     "Probabilistic Robotics" by Sebastian Thrun. Provides indirect support for
     nonautonomous systems.
 
+    Since the resampling forces a memory copy, this does not support
+
+    # TODO: how support return-by-ref here
+
     INPUTS:
         pxt -- callable -- (X0,u,z)->X1 samples current state given prior state
         pzt -- callable -- (X1,z)->w returns probability of observations zt given state xt
@@ -34,16 +38,35 @@ class ParticleFilterFactory:
 
         Run particle filter when prediction depends on timestep:
         >>> # def pxt(Xtm1, u, dt)
-        >>> kwargs = {'pxt_pars': dt)
+        >>> kwargs = {'pxt_pars': dt}
         >>> pf = ParticleFilterFactory(pxt, pzt, **kwargs)
+
+        Run particle filter with return-by-reference and extra args:
+        - return-by-reference must be 3rd argument
+        >>> # def pxt(Xtm1, u, Xt, *pxt_pars)
+        >>> # def pzt(zt, Xt, wt, *pzt_pars)
+        >>> kwargs = {'pxt_pars': dt, ...}
+        >>> pf = ParticleFilterFactory(pxt, pzt, **kwargs)
+
+        Run particle filter with non-autonomous transition function:
+        >>> # -- initialize --
+        >>> # def pxt(Xtm1, u, t)
+        >>> kwargs = {'pxt_pars': 0}  # init a time 0
+        >>> pf = ParticleFilterFactory(pxt, pzt, **kwargs)
+        >>>
+        >>> # -- run filter --
+        >>> # t = arange(0,tf,dt)
+        >>> for i, ti in enumerate(t):
+        >>>     Xt[i] = pf(Xt[i-1], u[i], z[i])
+        >>>     pf.pxt_pars = [ti]  # update args to transition callable
 
     NOTES:
         Probability function: resampling internally normalizes the
                               probabilities, so pzt doesn't need to integrate
                               to 1.
-        return-by-reference: Doesn't work as well as it should. Currently,
-                             the indexing in the resampling step forces an
-                             array copy anyway :( TODO
+        return-by-reference: The resampling forces at least one array copy,
+                             so this doesn't work as well as I might like.
+
 
     REFERENCES:
         Thrun, Probabilistic Robotics, Chp 4.3.
@@ -59,20 +82,31 @@ class ParticleFilterFactory:
         self.pxt_pars = list(kwargs.get('pxt_pars', []))
         self.pzt_pars = list(kwargs.get('pzt_pars', []))
 
-        self.P = kwargs.get('P',None)
-        self.N =kwargs.get('N',None)
-
         self.dbg = kwargs.get('debug', False)
         self.Xbart_dbg = []
-        self.Xt_dbg = []
         self.ii_dbg = []
+        self.wt_dbg = []
+
+        self.out = None
 
         vec = kwargs.get('vec', False)
         rbr = kwargs.get('rbr', False)
+        P = kwargs.get('P', None)
+        N = kwargs.get('N', None)
+
+        if (P is not None) and (N is not None):
+            self.out = zeros((P, N + 1))
+        elif (P is None) ^ (N is None):
+            warn(
+                f'Return-by-reference will fail. Filter size incomplete:P={P},N={N}')
+
+        if rbr:
+            raise NotImplementedError
+
         self._flow = self._flow_factory(vec, rbr)
 
-    def __call__(self, Xtm1, ut, zt, Xt=None):
-        """run particle filter
+    def __call__(self, Xtm1, ut, zt):
+        """Run particle filter.
         INPUTS:
             Xtm1 -- PxN -- P particles of length-N state vectors at time t-1
             ut -- input at time t
@@ -81,22 +115,19 @@ class ParticleFilterFactory:
         OUTPUTS:
             Xt -- PxN -- predicted particles at time t
         """
-        Xtm1 = asarray(Xtm1)
-        Xbart = self._flow(Xtm1, ut, zt)
+        out = self._flow(Xtm1, ut, zt)
         if self.dbg:
-            self.Xbart_dbg.append(Xbart.copy())
-        Xt = self._resample(Xbart)
+            self.Xbart_dbg.append(out.copy())
+        Xt = self._resample(out[:, :-1], out[:, -1])
         return Xt
 
-    def _resample(self, Xbart):
+    def _resample(self, Xbart, wt):
         """resampling step"""
         P = len(Xbart)
-        wt = Xbart[:, -1]
         ii = choice(range(P), size=P, p=wt / wt.sum())
         if self.dbg:
             self.ii_dbg.append(ii.copy())
-        # TODO: this is advanced indexing, and so returns a copy
-        return Xbart[ii, :-1]
+        return Xbart[ii]
 
     # ========================================================================
     # Prediction Step Factory
@@ -115,25 +146,30 @@ class ParticleFilterFactory:
 
     def _flow_iter(self, Xtm1, ut, zt):
         """Iterative prediction calculation. Returns directly."""
-        out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
-        return self._flow_iter_rbr(Xtm1, ut, zt, out)
+        out = zeros((Xtm1.shape[0], Xtm1.shape[1]) + 1)
+        for i in range(len(self.out)):
+            out[i, :-1] = self.pxt(Xtm1[i], ut, *self.pxt_pars)  # x_t^{[m]}
+            out[i, -1] = self.pzt(zt, out[i, :-1], *self.pzt_pars)  # w_t^{[m]}
+        return out
 
     def _flow_iter_rbr(self, Xtm1, ut, zt, out):
         """Iterative prediction calculation. Returns-by-reference."""
         for i in range(len(out)):
-            out[i, :-1] = self.pxt(Xtm1[i], ut, *self.pxt_pars)  # x_t^{[m]}
-            out[i, -1] = self.pzt(zt, out[i, :-1], *self.pzt_pars)  # w_t^{[m]}
+            self.pxt(Xtm1[i], ut, out[i, :-1], *self.pxt_pars)  # x_t^{[m]}
+            self.pzt(zt, out[i, :-1], out[:, -1], *self.pzt_pars)  # w_t^{[m]}
         return out
 
     def _flow_vec(self, Xtm1, ut, zt):
         """Vectorized prediction calculation. Returns directly."""
         out = zeros((Xtm1.shape[0], Xtm1.shape[1] + 1))
-        return self._flow_vec_rbr(Xtm1, ut, zt, out)
+        out[:, :-1] = self.pxt(Xtm1, ut, *self.pxt_pars)  # x_t^{[m]}
+        out[:, -1] = self.pzt(zt, out[:, :-1], *self.pzt_pars)  # w_t^{[m]}
+        return out
 
     def _flow_vec_rbr(self, Xtm1, ut, zt, out):
         """Vectorized prediction calculation. Returns-by-reference."""
-        out[:, :-1] = self.pxt(Xtm1, ut, *self.pxt_pars)  # x_t^{[m]}
-        out[:, -1] = self.pzt(zt, out[:, :-1], *self.pzt_pars)  # w_t^{[m]}
+        self.pxt(Xtm1, ut, out[:, :-1], *self.pxt_pars)  # x_t^{[m]}
+        self.pzt(zt, out[:, :-1], out[:, -1], *self.pzt_pars)  # w_t^{[m]}
         return out
 
 
