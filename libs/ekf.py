@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """
-Run simulation and EKF estimation.
-
-Choose units (mass, length, time) s.t. m = r = g = I = 1
+EKF construction for main.py
 """
 __all__ = ['construct_ekf']
-from time import time
-
-from numpy import arange, cos, eye, fill_diagonal, r_, sin, zeros
-from numpy.random import seed
+from numpy import cos, eye, fill_diagonal, sin, zeros
 
 from .EstimatorFactory import EKFFactory
 from .helpers import *
@@ -145,40 +140,3 @@ def construct_ekf(M, N, dt, njit, Q=None, R=None):
     for k in ('g', 'G'):
         pardict[k + '_pars'] = [dt]
     return EKFFactory(g, h, G, H, R, Q, N=N, M=M, njit=njit, **pardict)
-
-# ===================================================================
-# Unit Test
-
-
-if __name__ == '__main__':
-
-    # Simulation
-    dt = 0.01
-    t1 = 10
-    npts = 3
-    q0 = (0, 0, 0)   # x,y,theta
-    xi0 = (0, 0, 5)  # xdot,ydot,thetadot
-    t = arange(0, t1, dt)
-    gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
-
-    # Matrices
-    L, M = len(t), 2 * npts
-    N = M + 5
-
-    ekf = construct_ekf(M, N, dt, 1)
-    mu_t, sigma_t = zeros((L, N)), zeros((L, N, N))
-    sigma_t[-1] = 10
-    fill_diagonal(sigma_t[-1, :5, :5], 10)
-    sigma_t[-1, 4, 4] = 100
-    mu_t[-1] = [0, 0, 2, 0, 0] + list(obs.T[0].flatten())
-    print('Starting EKF...')
-    tref = time()
-    seed(0)
-    for i, _ in enumerate(t):
-        mu_t[i], sigma_t[i] = ekf(
-            mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten())
-    print(f'Done! t={time()-tref:.2f}s')
-
-    est = mu_t
-    tru = reconstruct(est, out, obs)
-    plots(t, tru, est)

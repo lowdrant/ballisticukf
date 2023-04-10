@@ -1,9 +1,9 @@
-__all__ = ['pxt', 'pzt', 'construct_pf']
+"""particle filter construction for main.py"""
+__all__ = ['construct_pf']
 from itertools import combinations
-from time import time
 
 from numpy import *
-from numpy.random import normal, seed
+from numpy.random import normal
 
 from .EstimatorFactory import ParticleFilterFactory
 from .helpers import *
@@ -109,43 +109,3 @@ def construct_pf(M, N, dt, scale):
     """
     pardict = {'pxt_pars': [dt, scale], 'vec': True}
     return ParticleFilterFactory(pxt, pzt, **pardict)
-
-# ===================================================================
-# Unit Test
-
-
-if __name__ == '__main__':
-    # raise NotImplementedError('TODO')
-    # Simulation
-    dt = 0.01
-    t1 = 10
-    npts = 3
-    q0 = (0, 0, 0)   # x,y,theta
-    xi0 = (0, 0, 5)  # xdot,ydot,thetadot
-    t = arange(0, t1, dt)
-    gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
-
-    # Matrices
-    L, M = len(t), 2 * npts
-    N = M + 5
-    P = 10
-    scale = [0.1, 0.1, 0.1, 0.1, 1] + [0.01] * M
-
-    rbr = 0
-    vec = 0
-    pf = ParticleFilterFactory(pxt, pzt, pxt_pars=[dt, scale], vec=vec)
-    if rbr:
-        pf = ParticleFilterFactory(pxt_rbr, pzt_rbr, pxt_pars=[
-                                   dt, scale], vec=vec, P=P, N=N, rbr=rbr)
-    X_t = zeros((L, P, N))
-    # X_t[-1] = [0, 0, 2, 0, 0] + list(obs.T[0].flatten())
-    print('Starting particle filter...')
-    tref = time()
-    seed(0)
-    for i, _ in enumerate(t):
-        X_t[i] = pf(X_t[i - 1], 0, obs.T[i].flatten())
-    print(f'Done! t={time()-tref:.2f}s')
-
-    # est = mu_t
-    # tru = reconstruct(est, out, obs)
-    # plots(t, tru, est)
