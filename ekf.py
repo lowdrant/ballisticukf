@@ -17,7 +17,7 @@ from helpers import *
 # State Transitions
 
 
-def g_rbr(u, mu, mubar):
+def g_rbr(u, mu, mubar, dt):
     """state transition function
     INPUTS:
         u -- input vector
@@ -48,12 +48,12 @@ def g_rbr(u, mu, mubar):
     return mubar
 
 
-def g(u, mu):
+def g(u, mu, dt):
     mubar = mu.copy()
-    return g_rbr(u, mu, mubar)
+    return g_rbr(u, mu, mubar, dt)
 
 
-def G_rbr(u, mu, G_t):
+def G_rbr(u, mu, G_t, dt):
     """State transition jacobian
     INPUTS:
         u -- input vector
@@ -87,10 +87,10 @@ def G_rbr(u, mu, G_t):
     return G_t
 
 
-def G(u, mu):
+def G(u, mu, dt):
     N = len(mu.T)
     G_t = zeros((N, N))
-    return G_rbr(u, mu, G_t)
+    return G_rbr(u, mu, G_t, dt)
 
 
 def h_rbr(mubar_t, zhat):
@@ -139,9 +139,8 @@ def construct_ekf(M, N, dt, njit, Q=None, R=None):
     H[:, 5:] = eye(M)
 
     pardict = {}
-    for k in ('g', 'h', 'H', 'G'):
-        pardict[k + '_args'] = [dt]
-    print(pardict)
+    for k in ('g', 'G'):
+        pardict[k + '_pars'] = [dt]
     return EKFFactory(g, h, G, H, R, Q, N=N, M=M, njit=njit, **pardict)
 
 # ===================================================================

@@ -2,119 +2,123 @@
 """
 Run simulation and estimation.
 
-Choose units (mass, length, time) s.t. m = r = g = I = 1
+Units (mass, length, time) are s.t. m = r = g = I = 1
 """
-from itertools import combinations
+from argparse import ArgumentParser
 from time import time
 
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
-from numba import njit
-from numpy import *
-from numpy.random import normal, rand, seed
+from numpy import arange, ceil, zeros
+from numpy.random import seed
 
+from ekf import construct_ekf
 from filters import *
 from helpers import *
+from pf import construct_pf
 
-# Constants
-dt = 0.01
-t1 = 100
-npts = 5
-q0 = (0, 0, 0)   # x,y,theta
-xi0 = (0, 0, 4)  # xdot,ydot,thetadot
-M = 1000
-
-t = arange(0, t1, dt)
-gcom, out, obs = compute_motion(r_[q0, xi0], t, npts)
-
-scale = [0.0001] * 2 + [0.0001] * 2 + [5] + [0.1] * (2 * npts)
-
-# ===================================================================
-# Priors
+# ============================================================================
+# Numeric Parameters that are awkward to set via CLI
 
 
-def pxt_rel(xtm1):
-    """generate probability cloud of current state given prev state
-    WARN: for relative marker positions
+def _init_sigma(s):
+    pass
+
+# ============================================================================
+# CLI
+
+
+def _run_sim(args):
+    """Parse CLI args and run disk sim.
     INPUTS:
-        xtm1 -- NxM -- N prior estimates for M states
-                       Format: (x,y, vx,vy, w, mx0,my0,...,mxK,myK)
-    NOTES:
-        Modeling motion of off-axis point, since that's what we are observing
-
-        For a disk at (x,y) moving at (vx,vy) with angle a and angular
-        velocity w, a point at radius r will have
-        observed velocity vo (vx+w*r*sina, vy+w*r*cosa)
+        args -- output of parse.parse_args()
     """
-    loc = xtm1.copy()
-    # flow CoM x,y
-    for i in range(2):
-        loc[..., i] += dt * loc[..., 2 + i]
-    # flow marker x,y
-    N = len(loc.T)
-    M = (N - 5) // 2
-    r = sqrt(loc[..., 5::2]**2 + loc[..., 6::2]**2)
-    thview = loc[..., 5:].reshape(loc.shape[:-1] + (M, 2))
-    th = arctan2(thview.T[0], thview.T[1]).T
-    thdot = loc[..., [4]]
-    loc[..., 5::2] += r * (cos(dt * thdot + th) - cos(th))
-    loc[..., 6::2] += r * (sin(dt * thdot + th) - sin(th))
-    # flow ydot
-    loc[..., 3] -= dt
-    return normal(loc=loc, scale=scale)
+    assert args.x0.count(',') == 4, '5 values needed to specify init. cond.'
+    x0 = [float(v) for v in args.x0.replace(' ', '').split(',')]
+    x0.insert(4, 0)
+    t = arange(0, args.tf, args.dt)
+    print('Running simulation...')
+    _, simout, obs = compute_motion(x0, t, args.npts)
+    print('Done!')
+    return t, simout, obs
 
 
-def pzt_rel(zt, xt):
-    """"Probability" that observations zt came from state xt. Implemented as a
-    cost function of RBT prediction error of zt.
-    WARN: for relative marker positions
+def _run_filter(args, obs):
+    """Parse CLI args and run appropriate filter.
     INPUTS:
-        zt -- NxK -- N observations of K observables quantities
-        xt -- NxM -- N estimates of M states
-
-    NOTES:
-        Since zt is a rigid point on body xt, augment xt with RBT to zt.
-        The particle filter renormalizes the probability of the particles,
-        so the output of this function doesn't need to cleanly integrate to
-        1. This lets us return 1/(1+err), where `err` is the Euclidean
-        distance between the observed marker and its predicted location by the
-        RBTs. The form of the function makes low errors preferred while
-        avoiding division by 0/numeric instability.
+        args -- output of parse.parse_args()
+    OUTPUTS:
+        estimate -- LxN -- L estimates (one per time step) for N states
     """
-    xt, zt = asarray(xt), asarray(zt)
-    xt = xt[newaxis, :] if xt.ndim == 1 else xt
-    zt = zt[newaxis, :] if zt.ndim == 1 else zt
-    err = zeros(len(xt))
-    # coordinate error
-    n = len(xt.T) - 5
-    d = zt[...] - xt[..., [0, 1] * (n // 2)] - xt[..., 5:n + 5]
-    err += sum(d**2, -1)
-    # pairwise distance error
-    pairs = list(combinations(range(0, len(xt.T) - 5, 2), 2))
-    for i1, i2 in pairs:
-        k1, k2 = i1 + 5, i2 + 5
-        dz = (zt[..., [i1, i1 + 1]] - zt[..., [i2, i2 + 1]])**2
-        dx = (xt[..., [k1, k1 + 1]] - xt[..., [k2, k2 + 1]])**2
-        err += sum((dz - dx)**2, -1)
-    return 1 / (1 + 1000 * err)
+    L = int(ceil(args.tf / args.dt))  # num timesteps in sim
+    M = 2 * args.npts  # each marker has 2 quantities
+    N = M + 5  # state vector is 5D, plus num marker quantities
+    fstr = args.filter.lower()
+
+    # Assemble Filtering Function
+    filt = None
+    if fstr == 'ekf':
+        filt = construct_ekf(M, N, args.dt, args.njit)
+    elif fstr == 'ukf':
+        raise NotImplementedError('UKF tbf')
+        filt = construct_ukf(M, N, args)
+    elif fstr == 'kf':
+        raise NotImplementedError('KF tbf')
+        filt = construct_kf(M, N, args)
+    elif fstr == 'pf':
+        raise NotImplementedError('still CLI testing EKF')
+        scale = [0.1, 0.1, 0.1, 0.1, 1] + [0.01] * M
+        if args.scale is not None:
+            scale = [float(v) for v in args.scale.replace(' ', '').split(',')]
+        filt = construct_pf(M, N, args.dt, scale)
+    else:
+        raise RuntimeError('somehow selected invalid filter type')
+
+    # Particle Filter has unique call signature
+    if fstr == 'pf':
+        P = args.particles
+        X_t = zeros(L, P, N)
+        print(f'Starting particle filter...')
+        tref = time()
+        seed(0)
+        for i, _ in enumerate(obs.T):
+            X_t[i] = filt(X_t[i - 1], obs.T[i].flatten())
+        print(f'Done! t={time()-tref:.2f}s')
+        return X_t.mean(0)
+
+    # KFs all have same call signature
+    mu_t = zeros((L, N))
+    sigma_t = zeros((L, N, N))
+    print(f'Starting {fstr.upper()}...')
+    tref = time()
+    seed(0)
+    for i, _ in enumerate(obs.T):
+        mu_t[i], sigma_t[i] = filt(
+            mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten())
+    print(f'Done! t={time()-tref:.2f}s')
+    return mu_t
 
 
-# ===================================================================
-# Filtering
-
-print('Starting particle filter...')
-tref = time()
-pf = ParticleFilter(pxt_rel, pzt_rel)
-Xt = zeros((len(t), M, 5 + len(obs.T[0].flatten())))
-Xt[-1] = [1, 0, 0, 0, 0] + list(obs.T[0].flatten())
-seed(0)
-for i, _ in enumerate(t):
-    Xt[i] = pf(Xt[i - 1], obs.T[i].flatten())
-print(f'Done! t={time()-tref:.2f}s')
-
-# ===================================================================
-# Validation
-
-est = mean(Xt, 1)
-tru = reconstruct(est, out, obs)
-# plots(t, tru, est)
+parser = ArgumentParser()
+parser.add_argument('--tf', default=5, type=float,
+                    help='sim runtime; default:5')
+parser.add_argument('--dt', default=0.1, type=float,
+                    help='sim step time; default:0.1')
+parser.add_argument('--npts', default=3, type=int,
+                    help='number markers on disk; default:3')
+parser.add_argument('--filter', help='choose state estimator',
+                    choices=('kf', 'ekf', 'ukf', 'pf'), default='ekf')
+parser.add_argument('--no-plot', action='store_true', help='suppress plotting')
+parser.add_argument('--x0', type=str, default='0,0,0,0,10',
+                    help='specify initial conditions: (x0,y0,vx0,vy0,w0); comma-separated')
+parser.add_argument('--njit', action='store_true',
+                    help='use njit optimization. only works for some filters')
+# parser.add_argument('--particles', type=int,
+#                     help='number of particles for Particle Filter')
+# parser.add_argument('--scale', type=str, default=None,
+#                     help='(particle filter) resampling variances of state vector elements, comma-separated')
+if __name__ == '__main__':
+    args = parser.parse_args()
+    t, simout, obs = _run_sim(args)
+    est = _run_filter(args, obs)
+    tru = reconstruct(est, simout, obs)
+    if not args.no_plot:
+        plots(t, tru, est)
