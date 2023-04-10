@@ -5,8 +5,8 @@ from time import time
 from numpy import *
 from numpy.random import normal, seed
 
-from filters import ParticleFilterFactory
-from helpers import *
+from .EstimatorFactory import ParticleFilterFactory
+from .helpers import *
 
 # ===================================================================
 # Priors

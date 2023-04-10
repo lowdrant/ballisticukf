@@ -1,0 +1,3 @@
+[submodule "EstimatorFactory"]
+	path = libs/EstimatorFactory
+	url = git@github.com:lowdrant/EstimatorFactory.git

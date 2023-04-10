@@ -10,8 +10,8 @@ from time import time
 from numpy import arange, cos, eye, fill_diagonal, r_, sin, zeros
 from numpy.random import seed
 
-from filters import *
-from helpers import *
+from .EstimatorFactory import EKFFactory
+from .helpers import *
 
 # ===================================================================
 # State Transitions
@@ -49,6 +49,7 @@ def g_rbr(u, mu, mubar, dt):
 
 
 def g(u, mu, dt):
+    """direct-return state transition function"""
     mubar = mu.copy()
     return g_rbr(u, mu, mubar, dt)
 
@@ -88,6 +89,7 @@ def G_rbr(u, mu, G_t, dt):
 
 
 def G(u, mu, dt):
+    """direct-return state transition jacobian"""
     N = len(mu.T)
     G_t = zeros((N, N))
     return G_rbr(u, mu, G_t, dt)
@@ -109,6 +111,7 @@ def h_rbr(mubar_t, zhat):
 
 
 def h(mubar_t):
+    """direct-return observation function"""
     out = mubar_t[..., 5:].copy()
     return h_rbr(mubar_t, out)
 
@@ -136,7 +139,7 @@ def construct_ekf(M, N, dt, njit, Q=None, R=None):
     H = zeros((M, N))
     H[::2, 0] = 1
     H[1::2, 1] = 1
-    H[:, 5:] = eye(M)
+    H[:, 5:] = eye(M)  # H defined here since 'M' is determined by main.py
 
     pardict = {}
     for k in ('g', 'G'):
