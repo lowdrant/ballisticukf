@@ -103,14 +103,14 @@ parser.add_argument('--tf', default=5, type=float,
 parser.add_argument('--dt', default=0.1, type=float,
                     help='sim step time; default:0.1')
 parser.add_argument('--npts', default=3, type=int,
-                    help='number markers on disk; default:3')
-parser.add_argument('--filter', help='choose state estimator',
+                    help='number of markers on disk; default:3')
+parser.add_argument('--filter', help='state estimator; default:ekf',
                     choices=('kf', 'ekf', 'ukf', 'pf'), default='ekf')
-parser.add_argument('--no-plot', action='store_true', help='suppress plotting')
 parser.add_argument('--x0', type=str, default='0,0,0,0,10',
-                    help='specify initial conditions: (x0,y0,vx0,vy0,w0); comma-separated')
+                    help='sim IVP, comma-separated list: (x,y,vx,vy,w); default(0,0,0,0,10)')
+parser.add_argument('--no-plot', action='store_true', help='suppress plotting')
 parser.add_argument('--njit', action='store_true',
-                    help='use njit optimization. only works for some filters')
+                    help='(EKF only) enable njit; default:False')
 # parser.add_argument('--particles', type=int,
 #                     help='number of particles for Particle Filter')
 # parser.add_argument('--scale', type=str, default=None,
