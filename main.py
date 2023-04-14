@@ -91,7 +91,7 @@ def _run_filter(args, obs):
     seed(0)
     for i, _ in enumerate(obs.T):
         mu_t[i], sigma_t[i] = filt(
-            mu_t[i - 1], sigma_t[i - 1], 0, obs.T[i].flatten())
+            mu_t[i - 1], sigma_t[i - 1], obs.T[i].flatten(), 0, 0)
     print(f'Done! t={time()-tref:.2f}s')
     return mu_t
 

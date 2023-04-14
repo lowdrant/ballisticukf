@@ -12,7 +12,7 @@ from .helpers import *
 # State Transitions
 
 
-def g_rbr(u, mu, mubar, dt):
+def g_rbr(t, u, mu, dt, mubar):
     """state transition function
     INPUTS:
         u -- input vector
@@ -43,13 +43,13 @@ def g_rbr(u, mu, mubar, dt):
     return mubar
 
 
-def g(u, mu, dt):
+def g(t, u, mu, dt):
     """direct-return state transition function"""
     mubar = mu.copy()
-    return g_rbr(u, mu, mubar, dt)
+    return g_rbr(t, u, mu, dt, mubar)
 
 
-def G_rbr(u, mu, G_t, dt):
+def G_rbr(t, u, mu, dt, G_t):
     """State transition jacobian
     INPUTS:
         u -- input vector
@@ -83,14 +83,14 @@ def G_rbr(u, mu, G_t, dt):
     return G_t
 
 
-def G(u, mu, dt):
+def G(t, u, mu, dt):
     """direct-return state transition jacobian"""
     N = len(mu.T)
     G_t = zeros((N, N))
-    return G_rbr(u, mu, G_t, dt)
+    return G_rbr(t, u, mu, dt, G_t)
 
 
-def h_rbr(mubar_t, zhat):
+def h_rbr(t, mubar_t, zhat):
     """state observation function
     INPUTS:
         mubar_t -- Mx1 -- M states at time t.
@@ -105,38 +105,38 @@ def h_rbr(mubar_t, zhat):
     return zhat
 
 
-def h(mubar_t):
+def h(t, mubar_t):
     """direct-return observation function"""
     out = mubar_t[..., 5:].copy()
-    return h_rbr(mubar_t, out)
+    return h_rbr(t, mubar_t, out)
 
 
-def construct_ekf(M, N, dt, njit, Q=None, R=None):
+def construct_ekf(k, n, dt, njit, Q=None, R=None):
     """Construct EKF for falling disk given state space and observation
     space size.
     INPUTS:
-        M -- observation space size
-        N -- state space size
+        k -- observation space size
+        n -- state space size
         njit -- bool, optional -- enable njit optimization, default: False
         Q -- MxM, optional -- specify Q, see code for default
         R -- NxN, optional -- specify R, see code for default
     """
     if R is None:
-        R = eye(N) * 0.1
+        R = eye(n) * 0.1
         R[4, 4] = 1  # unknown thetadot
         R[0, 2] = 1  # x depends on vx
         R[2, 0] = 1
         R[1, 3] = 1  # y depends on vy
         R[3, 1] = 1
     if Q is None:
-        Q = eye(M)
+        Q = eye(k)
         Q[...] = 0
-    H = zeros((M, N))
+    H = zeros((k, n))
     H[::2, 0] = 1
     H[1::2, 1] = 1
-    H[:, 5:] = eye(M)  # H defined here since 'M' is determined by main.py
+    H[:, 5:] = eye(k)  # H defined here since 'M' is determined by main.py
 
     pardict = {}
-    for k in ('g', 'G'):
-        pardict[k + '_pars'] = [dt]
-    return EKFFactory(g, h, G, H, R, Q, N=N, M=M, njit=njit, **pardict)
+    for key in ('g', 'G'):
+        pardict[key + '_pars'] = [dt]
+    return EKFFactory(g, h, G, H, R, Q, n=n, k=k, njit=njit, **pardict)
