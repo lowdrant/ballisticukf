@@ -55,7 +55,6 @@ def _run_filter(args, obs):
     if fstr == 'ekf':
         filt = construct_ekf(M, N, args.dt, args.njit)
     elif fstr == 'ukf':
-        raise NotImplementedError('UKF tbd')
         filt = construct_ukf(M, N, args)
     elif fstr == 'kf':
         linpt = [0, 0, 0, 0, 0]

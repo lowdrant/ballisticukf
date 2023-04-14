@@ -22,7 +22,7 @@ def construct_kf(M, N, dt, linpt):
     C[::2, 0] = 1
     C[1::2, 1] = 1
     C[:, 5:] = eye(M)  # C defined here since 'M' is determined by main.py
-    B, D = 0, 0  # no input
+    B = 0  # no input
     R = eye(N)
     Q = eye(M)
     return KFFactory(A, B, C, R, Q)

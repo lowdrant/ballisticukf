@@ -31,7 +31,6 @@ def g_rbr(t, u, mu, dt, mubar):
     mubar[3] = mu[3] - dt
     mubar[4] = mu[4]
     # Marker Motion
-    N = len(mubar.T)
     # - extract views
     mx, my, thdot = mu[5::2], mu[6::2], mu[4]
     # -- intermediate memory allocation --
