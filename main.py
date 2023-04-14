@@ -59,9 +59,10 @@ def _run_filter(args, obs):
         filt = construct_ukf(M, N, args)
     elif fstr == 'kf':
         linpt = [0, 0, 0, 0, 0]
+        linpt += [0] * M
         if args.linpt is not None:
             linpt = [float(v) for v in args.linpt.replace(' ', '').split(',')]
-        assert len(linpt) == 5, 'only 5 states'
+        assert len(linpt) - M == 5, 'only 5 states'
         filt = construct_kf(M, N, args.dt, linpt)
     elif fstr == 'pf':
         scale = [0.1, 0.1, 0.1, 0.1, 1] + [0.01] * M

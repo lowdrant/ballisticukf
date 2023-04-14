@@ -17,8 +17,7 @@ def construct_kf(M, N, dt, linpt):
         linpt -- 5x1 -- state to linearize about
     """
     linpt = asarray(linpt)
-    print(linpt)
-    A = G(0, linpt, dt)  # linearize about a point
+    A = G(0, 0, linpt, dt)  # linearize about a point
     C = zeros((M, N))
     C[::2, 0] = 1
     C[1::2, 1] = 1
@@ -26,4 +25,4 @@ def construct_kf(M, N, dt, linpt):
     B, D = 0, 0  # no input
     R = eye(N)
     Q = eye(M)
-    return KFFactory(A, B, C, D, R, Q)
+    return KFFactory(A, B, C, R, Q)
